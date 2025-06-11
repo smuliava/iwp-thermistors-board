@@ -55,6 +55,9 @@ UART_HandleTypeDef huart2;
 /* USER CODE BEGIN PV */
 volatile uint32_t adcValues[] = {0, 0, 0, 0};
 const uint32_t adcBufferSize = sizeof(adcValues) / sizeof(adcValues[0]);
+
+FDCAN_RxHeaderTypeDef RxHeader;
+uint8_t RxData[80];
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -65,6 +68,7 @@ static void MX_ADC1_Init(void);
 static void MX_FDCAN1_Init(void);
 static void MX_USART2_UART_Init(void);
 /* USER CODE BEGIN PFP */
+static void FDCAN1_StartWithFilters(void);
 
 /* USER CODE END PFP */
 
@@ -116,8 +120,9 @@ int main(void)
 //  vrefint_cal= *((uint16_t*)VREFINT_CAL_ADDR);
 
   HAL_ADC_Start_DMA(&hadc1, (uint32_t*)&adcValues, adcBufferSize);
+  FDCAN1_StartWithFilters();
 
-  /* USER CODE END 2 */
+   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
@@ -132,7 +137,7 @@ int main(void)
 	Thermistor trm4 = Thermistor(&adcValues[3], RESISTOR_ROOM_TEMP, BETA, BALANCE_RESISTOR);
   while (1)
   {
-	  printf("ADC Value: 1: %f, 2: %f, 3: %f, 4: %f\r\n", trm1.getTempCelsius(), trm2.getTempCelsius(), trm3.getTempCelsius(), trm4.getTempCelsius());
+	  //printf("ADC Value: 1: %f, 2: %f, 3: %f, 4: %f\r\n", trm1.getTempCelsius(), trm2.getTempCelsius(), trm3.getTempCelsius(), trm4.getTempCelsius());
 	  HAL_Delay(1000);
     /* USER CODE END WHILE */
 
@@ -304,7 +309,7 @@ static void MX_FDCAN1_Init(void)
   hfdcan1.Instance = FDCAN1;
   hfdcan1.Init.ClockDivider = FDCAN_CLOCK_DIV1;
   hfdcan1.Init.FrameFormat = FDCAN_FRAME_CLASSIC;
-  hfdcan1.Init.Mode = FDCAN_MODE_BUS_MONITORING;
+  hfdcan1.Init.Mode = FDCAN_MODE_NORMAL; //
   hfdcan1.Init.AutoRetransmission = DISABLE;
   hfdcan1.Init.TransmitPause = DISABLE;
   hfdcan1.Init.ProtocolException = DISABLE;
@@ -435,6 +440,46 @@ extern "C" {
 			return -1;
 		}
 	}
+
+	void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo0ITs) {
+
+		printf("FDCAN: %u", RxFifo0ITs);
+
+		if((RxFifo0ITs & FDCAN_IT_RX_FIFO0_NEW_MESSAGE) != RESET) {
+
+			/* Retrieve Rx messages from RX FIFO0 */
+			if (HAL_FDCAN_GetRxMessage(hfdcan, FDCAN_RX_FIFO0, &RxHeader, RxData) != HAL_OK) {
+				Error_Handler();
+			}
+	  }
+	}
+}
+
+static void FDCAN1_StartWithFilters() {
+	FDCAN_FilterTypeDef sFilterConfig;
+	sFilterConfig.IdType = FDCAN_STANDARD_ID;
+	sFilterConfig.FilterIndex = 0;
+	sFilterConfig.FilterType = FDCAN_FILTER_RANGE;
+	sFilterConfig.FilterConfig = FDCAN_FILTER_TO_RXFIFO0;
+	sFilterConfig.FilterID1 = 0;
+	sFilterConfig.FilterID2 = 0; //0x1FFFFFFF;
+	if (HAL_FDCAN_ConfigFilter(&hfdcan1, &sFilterConfig) != HAL_OK) {
+		/* Filter configuration Error */
+		printf("[CAN] Unable to configure!\n");
+	}
+
+	if (HAL_FDCAN_Start(&hfdcan1) != HAL_OK) {
+		/* Start Error */
+		printf("[CAN] Unable to start!\n");
+	}
+
+	if (HAL_FDCAN_ActivateNotification(&hfdcan1, FDCAN_IT_RX_FIFO0_NEW_MESSAGE, 0) != HAL_OK) {
+		/* Notification Error */
+		printf("[CAN] Unable to activate the CAN interrupt!\n");
+	}
+
+	HAL_NVIC_SetPriority(FDCAN1_IT0_IRQn, 0, 0);
+	HAL_NVIC_EnableIRQ(FDCAN1_IT0_IRQn);
 }
 
 /* USER CODE END 4 */
