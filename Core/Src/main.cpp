@@ -135,10 +135,11 @@ int main(void)
 	Thermistor trm2 = Thermistor(&adcValues[1], RESISTOR_ROOM_TEMP, BETA, BALANCE_RESISTOR);
 	Thermistor trm3 = Thermistor(&adcValues[2], RESISTOR_ROOM_TEMP, BETA, BALANCE_RESISTOR);
 	Thermistor trm4 = Thermistor(&adcValues[3], RESISTOR_ROOM_TEMP, BETA, BALANCE_RESISTOR);
+	int counter = 0;
   while (1)
   {
 	  //printf("ADC Value: 1: %f, 2: %f, 3: %f, 4: %f\r\n", trm1.getTempCelsius(), trm2.getTempCelsius(), trm3.getTempCelsius(), trm4.getTempCelsius());
-	  printf("Ping...\r\n");
+	  printf("Ping...%u\r\n", counter++);
 	  HAL_Delay(1000);
 
     /* USER CODE END WHILE */
@@ -309,16 +310,16 @@ static void MX_FDCAN1_Init(void)
 
   /* USER CODE END FDCAN1_Init 1 */
   hfdcan1.Instance = FDCAN1;
-  hfdcan1.Init.ClockDivider = FDCAN_CLOCK_DIV4;
+  hfdcan1.Init.ClockDivider = FDCAN_CLOCK_DIV1;
   hfdcan1.Init.FrameFormat = FDCAN_FRAME_CLASSIC;
   hfdcan1.Init.Mode = FDCAN_MODE_NORMAL; //
   hfdcan1.Init.AutoRetransmission = DISABLE;
   hfdcan1.Init.TransmitPause = DISABLE;
   hfdcan1.Init.ProtocolException = DISABLE;
-  hfdcan1.Init.NominalPrescaler = 16;
+  hfdcan1.Init.NominalPrescaler = 12;
   hfdcan1.Init.NominalSyncJumpWidth = 1;
-  hfdcan1.Init.NominalTimeSeg1 = 1;
-  hfdcan1.Init.NominalTimeSeg2 = 1;
+  hfdcan1.Init.NominalTimeSeg1 = 11;
+  hfdcan1.Init.NominalTimeSeg2 = 2;
   hfdcan1.Init.DataPrescaler = 1;
   hfdcan1.Init.DataSyncJumpWidth = 1;
   hfdcan1.Init.DataTimeSeg1 = 1;
@@ -445,8 +446,7 @@ extern "C" {
 	}
 }
 
-extern "C" {
-	void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo0ITs) {
+void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo0ITs) {
 
 			printf("FDCAN: %u\r\n", RxFifo0ITs);
 
@@ -458,20 +458,19 @@ extern "C" {
 				}
 		  }
 		}
-}
 
 static void FDCAN1_StartWithFilters() {
-	FDCAN_FilterTypeDef sFilterConfig;
-	sFilterConfig.IdType = FDCAN_STANDARD_ID;
-	sFilterConfig.FilterIndex = 0;
-	sFilterConfig.FilterType = FDCAN_FILTER_RANGE;
-	sFilterConfig.FilterConfig = FDCAN_FILTER_TO_RXFIFO0;
-	sFilterConfig.FilterID1 = 0;
-	sFilterConfig.FilterID2 = 0; //0x1FFFFFFF;
-	if (HAL_FDCAN_ConfigFilter(&hfdcan1, &sFilterConfig) != HAL_OK) {
-		/* Filter configuration Error */
-		printf("[CAN] Unable to configure!\n");
-	}
+//	FDCAN_FilterTypeDef sFilterConfig;
+//	sFilterConfig.IdType = FDCAN_STANDARD_ID;
+//	sFilterConfig.FilterIndex = 0;
+//	sFilterConfig.FilterType = FDCAN_FILTER_RANGE;
+//	sFilterConfig.FilterConfig = FDCAN_FILTER_TO_RXFIFO0;
+//	sFilterConfig.FilterID1 = 0;
+//	sFilterConfig.FilterID2 = 0; //0x1FFFFFFF;
+//	if (HAL_FDCAN_ConfigFilter(&hfdcan1, &sFilterConfig) != HAL_OK) {
+//		/* Filter configuration Error */
+//		printf("[CAN] Unable to configure!\n");
+//	}
 
 	if (HAL_FDCAN_Start(&hfdcan1) != HAL_OK) {
 		/* Start Error */
