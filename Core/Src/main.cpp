@@ -138,7 +138,9 @@ int main(void)
   while (1)
   {
 	  //printf("ADC Value: 1: %f, 2: %f, 3: %f, 4: %f\r\n", trm1.getTempCelsius(), trm2.getTempCelsius(), trm3.getTempCelsius(), trm4.getTempCelsius());
+	  printf("Ping...\r\n");
 	  HAL_Delay(1000);
+
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -307,7 +309,7 @@ static void MX_FDCAN1_Init(void)
 
   /* USER CODE END FDCAN1_Init 1 */
   hfdcan1.Instance = FDCAN1;
-  hfdcan1.Init.ClockDivider = FDCAN_CLOCK_DIV1;
+  hfdcan1.Init.ClockDivider = FDCAN_CLOCK_DIV4;
   hfdcan1.Init.FrameFormat = FDCAN_FRAME_CLASSIC;
   hfdcan1.Init.Mode = FDCAN_MODE_NORMAL; //
   hfdcan1.Init.AutoRetransmission = DISABLE;
@@ -423,6 +425,7 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+
 extern "C" {
 	int _write(int file, char *ptr, int len) {
 		HAL_StatusTypeDef hstatus;
@@ -440,19 +443,21 @@ extern "C" {
 			return -1;
 		}
 	}
+}
 
+extern "C" {
 	void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo0ITs) {
 
-		printf("FDCAN: %u", RxFifo0ITs);
+			printf("FDCAN: %u\r\n", RxFifo0ITs);
 
-		if((RxFifo0ITs & FDCAN_IT_RX_FIFO0_NEW_MESSAGE) != RESET) {
+			if((RxFifo0ITs & FDCAN_IT_RX_FIFO0_NEW_MESSAGE) != RESET) {
 
-			/* Retrieve Rx messages from RX FIFO0 */
-			if (HAL_FDCAN_GetRxMessage(hfdcan, FDCAN_RX_FIFO0, &RxHeader, RxData) != HAL_OK) {
-				Error_Handler();
-			}
-	  }
-	}
+				/* Retrieve Rx messages from RX FIFO0 */
+				if (HAL_FDCAN_GetRxMessage(hfdcan, FDCAN_RX_FIFO0, &RxHeader, RxData) != HAL_OK) {
+					Error_Handler();
+				}
+		  }
+		}
 }
 
 static void FDCAN1_StartWithFilters() {
