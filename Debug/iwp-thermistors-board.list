@@ -1856,7 +1856,7 @@ static void MX_FDCAN1_Init(void)
  8001310:	4b1f      	ldr	r3, [pc, #124]	@ (8001390 <_ZL14MX_FDCAN1_Initv+0x90>)
  8001312:	2200      	movs	r2, #0
  8001314:	609a      	str	r2, [r3, #8]
-  hfdcan1.Init.Mode = FDCAN_MODE_NORMAL; //
+  hfdcan1.Init.Mode = FDCAN_MODE_NORMAL;
  8001316:	4b1e      	ldr	r3, [pc, #120]	@ (8001390 <_ZL14MX_FDCAN1_Initv+0x90>)
  8001318:	2200      	movs	r2, #0
  800131a:	60da      	str	r2, [r3, #12]
@@ -2249,28 +2249,27 @@ extern "C" {
  8001560:	20000320 	.word	0x20000320
 
 08001564 <HAL_FDCAN_RxFifo0Callback>:
-}
 
-void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo0ITs) {
+	void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo0ITs) {
  8001564:	b580      	push	{r7, lr}
  8001566:	b082      	sub	sp, #8
  8001568:	af00      	add	r7, sp, #0
  800156a:	6078      	str	r0, [r7, #4]
  800156c:	6039      	str	r1, [r7, #0]
 
-			printf("FDCAN: %u\r\n", RxFifo0ITs);
+		printf("FDCAN: %u\r\n", RxFifo0ITs);
  800156e:	6839      	ldr	r1, [r7, #0]
  8001570:	480d      	ldr	r0, [pc, #52]	@ (80015a8 <HAL_FDCAN_RxFifo0Callback+0x44>)
  8001572:	f005 fe29 	bl	80071c8 <iprintf>
 
-			if((RxFifo0ITs & FDCAN_IT_RX_FIFO0_NEW_MESSAGE) != RESET) {
+		if((RxFifo0ITs & FDCAN_IT_RX_FIFO0_NEW_MESSAGE) != RESET) {
  8001576:	683b      	ldr	r3, [r7, #0]
  8001578:	f003 0301 	and.w	r3, r3, #1
  800157c:	2b00      	cmp	r3, #0
  800157e:	d00f      	beq.n	80015a0 <HAL_FDCAN_RxFifo0Callback+0x3c>
 
-				/* Retrieve Rx messages from RX FIFO0 */
-				if (HAL_FDCAN_GetRxMessage(hfdcan, FDCAN_RX_FIFO0, &RxHeader, RxData) != HAL_OK) {
+			/* Retrieve Rx messages from RX FIFO0 */
+			if (HAL_FDCAN_GetRxMessage(hfdcan, FDCAN_RX_FIFO0, &RxHeader, RxData) != HAL_OK) {
  8001580:	4b0a      	ldr	r3, [pc, #40]	@ (80015ac <HAL_FDCAN_RxFifo0Callback+0x48>)
  8001582:	4a0b      	ldr	r2, [pc, #44]	@ (80015b0 <HAL_FDCAN_RxFifo0Callback+0x4c>)
  8001584:	2140      	movs	r1, #64	@ 0x40
@@ -2284,11 +2283,11 @@ void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo0ITs)
  8001596:	b2db      	uxtb	r3, r3
  8001598:	2b00      	cmp	r3, #0
  800159a:	d001      	beq.n	80015a0 <HAL_FDCAN_RxFifo0Callback+0x3c>
-					Error_Handler();
+				Error_Handler();
  800159c:	f000 f83a 	bl	8001614 <Error_Handler>
-				}
-		  }
-		}
+			}
+	  }
+	}
  80015a0:	bf00      	nop
  80015a2:	3708      	adds	r7, #8
  80015a4:	46bd      	mov	sp, r7
@@ -2298,6 +2297,7 @@ void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo0ITs)
  80015b0:	200003c4 	.word	0x200003c4
 
 080015b4 <_ZL23FDCAN1_StartWithFiltersv>:
+}
 
 static void FDCAN1_StartWithFilters() {
  80015b4:	b580      	push	{r7, lr}
