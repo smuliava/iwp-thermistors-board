@@ -121,7 +121,7 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  	const double BALANCE_RESISTOR = 6790.0;
+  const double BALANCE_RESISTOR = 6790.0;
 	const double BETA = 3740.0;
 	const double ROOM_TEMP = 298.15;
 	const double RESISTOR_ROOM_TEMP = 22000.0;
@@ -304,7 +304,7 @@ static void MX_FDCAN1_Init(void)
   hfdcan1.Instance = FDCAN1;
   hfdcan1.Init.ClockDivider = FDCAN_CLOCK_DIV1;
   hfdcan1.Init.FrameFormat = FDCAN_FRAME_CLASSIC;
-  hfdcan1.Init.Mode = FDCAN_MODE_NORMAL;
+  hfdcan1.Init.Mode = FDCAN_MODE_BUS_MONITORING;
   hfdcan1.Init.AutoRetransmission = DISABLE;
   hfdcan1.Init.TransmitPause = DISABLE;
   hfdcan1.Init.ProtocolException = DISABLE;
