@@ -1,0 +1,10 @@
+C:\ST\STM32CubeIDE_1.18.0\STM32CubeIDE\plugins\com.st.stm32cube.ide.mcu.externaltools.gnu-tools-for-stm32.13.3.rel1.win32_1.0.0.202411081344\tools\arm-none-eabi\include\c++\13.3.1\arm-none-eabi\thumb\v7e-m+fp\hard\bits\gthr-default.h:229:1:int __gthread_key_delete(__gthread_key_t)	1
+../Core/Src/main.cpp:80:5:int main()	1
+../Core/Src/main.cpp:152:6:void SystemClock_Config()	3
+../Core/Src/main.cpp:199:13:void MX_ADC1_Init()	7
+../Core/Src/main.cpp:298:13:void MX_FDCAN1_Init()	2
+../Core/Src/main.cpp:341:13:void MX_USART2_UART_Init()	5
+../Core/Src/main.cpp:387:13:void MX_DMA_Init()	1
+../Core/Src/main.cpp:409:13:void MX_GPIO_Init()	1
+../Core/Src/main.cpp:426:6:int _write(int, char*, int)	4
+../Core/Src/main.cpp:450:6:void Error_Handler()	1
