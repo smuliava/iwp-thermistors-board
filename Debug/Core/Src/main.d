@@ -30,7 +30,11 @@ Core/Src/main.o: ../Core/Src/main.cpp ../Core/Inc/main.h \
  ../Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal_pwr_ex.h \
  ../Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal_uart.h \
  ../Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal_uart_ex.h \
- D:/projects/STM32CubeIDE/workspace_1.18.0/iwp-thermistors-board/Core/Src/Heating/Sensors/Thermistor.h
+ D:/projects/STM32CubeIDE/workspace_1.18.0/iwp-thermistors-board/Core/Src/Heating/Sensors/Thermistor.h \
+ ../Core/Inc/CanId.h ../Core/Inc/CoreTypes.h \
+ ../Core/Inc/CanMessageGenericParser.h ../Core/Inc/CanMessageFormats.h \
+ ../Core/Inc/CanSettings.h ../Core/Inc/CanId.h \
+ ../Core/Inc/CanMessageGenericTableFormat.h
 ../Core/Inc/main.h:
 ../Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal.h:
 ../Core/Inc/stm32g4xx_hal_conf.h:
@@ -64,3 +68,10 @@ Core/Src/main.o: ../Core/Src/main.cpp ../Core/Inc/main.h \
 ../Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal_uart.h:
 ../Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal_uart_ex.h:
 D:/projects/STM32CubeIDE/workspace_1.18.0/iwp-thermistors-board/Core/Src/Heating/Sensors/Thermistor.h:
+../Core/Inc/CanId.h:
+../Core/Inc/CoreTypes.h:
+../Core/Inc/CanMessageGenericParser.h:
+../Core/Inc/CanMessageFormats.h:
+../Core/Inc/CanSettings.h:
+../Core/Inc/CanId.h:
+../Core/Inc/CanMessageGenericTableFormat.h:

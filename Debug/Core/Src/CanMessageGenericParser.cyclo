@@ -1,0 +1,18 @@
+../Core/Inc/CanMessageFormats.h:24:20:void copy4bytes(const void*, void*)	1
+../Core/Inc/CanMessageFormats.h:36:21:float LoadLEF32(const void*)	1
+../Core/Inc/CanMessageGenericTableFormat.h:67:9:size_t ParamDescriptor::ItemSize() const	1
+../Core/Src/CanMessageGenericParser.cpp:14:6:bool CanMessageGenericParser::GetStringParam(char, char*) const	3
+../Core/Src/CanMessageGenericParser.cpp:29:28:ParamDescriptor::ParamType CanMessageGenericParser::FindParameter(char, unsigned int&) const	9
+../Core/Src/CanMessageGenericParser.cpp:66:6:bool CanMessageGenericParser::GetUintParam(char, uint32_t&) const	9
+../Core/Src/CanMessageGenericParser.cpp:91:6:bool CanMessageGenericParser::GetUintParam(char, uint16_t&) const	2
+../Core/Src/CanMessageGenericParser.cpp:102:6:bool CanMessageGenericParser::GetUintParam(char, uint8_t&) const	2
+../Core/Src/CanMessageGenericParser.cpp:113:6:bool CanMessageGenericParser::GetIntParam(char, int32_t&) const	5
+../Core/Src/CanMessageGenericParser.cpp:136:6:bool CanMessageGenericParser::GetIntParam(char, int16_t&) const	2
+../Core/Src/CanMessageGenericParser.cpp:147:6:bool CanMessageGenericParser::GetIntParam(char, int8_t&) const	2
+../Core/Src/CanMessageGenericParser.cpp:158:6:bool CanMessageGenericParser::GetFloatParam(char, float&) const	3
+../Core/Src/CanMessageGenericParser.cpp:177:6:bool CanMessageGenericParser::GetCharParam(char, char&) const	2
+../Core/Src/CanMessageGenericParser.cpp:192:6:bool CanMessageGenericParser::GetBoolParam(char, bool&) const	7
+../Core/Src/CanMessageGenericParser.cpp:227:6:bool CanMessageGenericParser::GetArrayParam(char, ParamDescriptor::ParamType, size_t&, const uint8_t*&) const	3
+../Core/Src/CanMessageGenericParser.cpp:243:6:bool CanMessageGenericParser::GetUint16ArrayParam(char, size_t&, uint16_t*) const	3
+../Core/Src/CanMessageGenericParser.cpp:261:6:bool CanMessageGenericParser::GetFloatArrayParam(char, size_t&, float*) const	3
+../Core/Src/CanMessageGenericParser.cpp:276:6:bool CanMessageGenericParser::HasParameter(char) const	1

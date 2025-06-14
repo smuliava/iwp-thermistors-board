@@ -1,0 +1,8 @@
+../Core/Src/StringFunctions.cpp:12:6:bool StringEndsWithIgnoreCase(c_string, c_string)	3
+../Core/Src/StringFunctions.cpp:20:6:bool StringEqualsIgnoreCase(c_string, c_string)	6
+../Core/Src/StringFunctions.cpp:42:6:bool ReducedStringEquals(c_string, c_string)	10
+../Core/Src/StringFunctions.cpp:72:6:bool StringStartsWith(c_string, c_string)	3
+../Core/Src/StringFunctions.cpp:93:6:bool StringStartsWithIgnoreCase(c_string, c_string)	3
+../Core/Src/StringFunctions.cpp:109:5:int StringContains(c_string, c_string)	4
+../Core/Src/StringFunctions.cpp:136:6:void SafeStrncpy(char*, c_string, size_t)	1
+../Core/Src/StringFunctions.cpp:143:6:void SafeStrncat(char*, c_string, size_t)	1

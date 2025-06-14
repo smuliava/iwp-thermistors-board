@@ -24,8 +24,18 @@
 #include <stdio.h>
 #include <errno.h>
 #include <sys/unistd.h>
+
+#include <cstdint>
+#include <cstddef>
+#include <new>
+
 #include <tgmath.h>
 #include <Thermistor.h>
+#include <CanId.h>
+#include <CanMessageGenericParser.h>
+#include <String.h>
+#include <string.h>
+using namespace std;
 
 /* USER CODE END Includes */
 
@@ -36,6 +46,9 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+#define T_SENSORS_COUNT 54
+#define MAX_REDUCED_STRING_LENGTH 21
+#define MAX_STRING_LENGTH 60
 
 /* USER CODE END PD */
 
@@ -57,7 +70,8 @@ volatile uint32_t adcValues[] = {0, 0, 0, 0};
 const uint32_t adcBufferSize = sizeof(adcValues) / sizeof(adcValues[0]);
 
 FDCAN_RxHeaderTypeDef RxHeader;
-uint8_t RxData[80];
+FDCAN_TxHeaderTypeDef TxHeader;
+uint8_t RxData[120];
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -74,6 +88,22 @@ static void FDCAN1_StartWithFilters(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+void printHexArray(const uint8_t* arr, size_t size) {
+	    for (size_t i = 0; i < size; ++i) {
+	        printf("%02x ", arr[i]); // %02x ensures two-digit hex output with leading zeros
+	    }
+	    printf("\r\n");
+	}
+
+	void print_uint8_array_hex(const uint8_t *arr, size_t len) {
+		printf("Can Data: ");
+		char str[len + 1]; // +1 for null terminator
+		   for (size_t i = 0; i < len; i++) {
+			   str[i] = arr[i] > 32 ? (char)arr[i] : ' ';
+		   }
+		   str[len] = '\0'; // Null-terminate the string
+		   printf("%s\r\n", str);
+	   }
 
 /* USER CODE END 0 */
 
@@ -85,6 +115,7 @@ int main(void)
 {
 
   /* USER CODE BEGIN 1 */
+
 
   /* USER CODE END 1 */
 
@@ -138,8 +169,51 @@ int main(void)
 	int counter = 0;
   while (1)
   {
+//	  continue;
 	  //printf("ADC Value: 1: %f, 2: %f, 3: %f, 4: %f\r\n", trm1.getTempCelsius(), trm2.getTempCelsius(), trm3.getTempCelsius(), trm4.getTempCelsius());
-	  printf("Ping...%u\r\n", counter++);
+//	  printf("Ping...%u\r\n", counter++);
+	  CanMessageSensorTemperatures tempRep;
+	  tempRep.whichSensors = 0;
+	  tempRep.whichSensors |= (uint64_t)1u << 54;
+	  tempRep.temperatureReports[0].SetTemperature(22.642);
+	  CanId canTemp;
+
+	  canTemp.SetRequest(CanMessageType::sensorTemperaturesReport, 88, 127);
+
+		TxHeader.Identifier = canTemp.GetWholeId();
+		TxHeader.IdType = FDCAN_EXTENDED_ID;
+		TxHeader.TxFrameType = FDCAN_DATA_FRAME;
+		TxHeader.ErrorStateIndicator = FDCAN_ESI_ACTIVE;
+		TxHeader.FDFormat = FDCAN_FD_CAN;
+		TxHeader.BitRateSwitch = FDCAN_BRS_OFF;
+		TxHeader.TxEventFifoControl = FDCAN_NO_TX_EVENTS; // FDCAN_STORE_TX_EVENTS;
+	//					TxHeader.MessageMarker = 8;
+		TxHeader.MessageMarker = 0;
+
+
+
+
+		uint32_t dataLen = tempRep.GetActualDataLength(1);
+		TxHeader.DataLength = dataLen;
+
+//		printf("FDCAN Temperature report: ");
+//		printHexArray((uint8_t*)&stdrepl, 60);
+
+		if (HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &TxHeader, (uint8_t*)&tempRep) != HAL_OK) {
+				/* Transmission request Error */
+				Error_Handler();
+
+		}
+
+		printf("FDCAN: Src: %u, Dst: %u, MsgType: %u, isRequest: %u, isResponse: %u\r\n",
+				canTemp.Src(),
+				canTemp.Dst(),
+				canTemp.MsgType(),
+				canTemp.IsRequest(),
+				canTemp.IsResponse());
+				printHexArray((uint8_t*)&tempRep, 60);
+
+
 	  HAL_Delay(1000);
 
     /* USER CODE END WHILE */
@@ -311,19 +385,19 @@ static void MX_FDCAN1_Init(void)
   /* USER CODE END FDCAN1_Init 1 */
   hfdcan1.Instance = FDCAN1;
   hfdcan1.Init.ClockDivider = FDCAN_CLOCK_DIV1;
-  hfdcan1.Init.FrameFormat = FDCAN_FRAME_CLASSIC;
+  hfdcan1.Init.FrameFormat = FDCAN_FRAME_FD_NO_BRS;
   hfdcan1.Init.Mode = FDCAN_MODE_NORMAL;
   hfdcan1.Init.AutoRetransmission = DISABLE;
   hfdcan1.Init.TransmitPause = DISABLE;
   hfdcan1.Init.ProtocolException = DISABLE;
   hfdcan1.Init.NominalPrescaler = 12;
-  hfdcan1.Init.NominalSyncJumpWidth = 1;
+  hfdcan1.Init.NominalSyncJumpWidth = 8;
   hfdcan1.Init.NominalTimeSeg1 = 11;
   hfdcan1.Init.NominalTimeSeg2 = 2;
   hfdcan1.Init.DataPrescaler = 1;
-  hfdcan1.Init.DataSyncJumpWidth = 1;
-  hfdcan1.Init.DataTimeSeg1 = 1;
-  hfdcan1.Init.DataTimeSeg2 = 1;
+  hfdcan1.Init.DataSyncJumpWidth = 8;
+  hfdcan1.Init.DataTimeSeg1 = 11;
+  hfdcan1.Init.DataTimeSeg2 = 2;
   hfdcan1.Init.StdFiltersNbr = 0;
   hfdcan1.Init.ExtFiltersNbr = 0;
   hfdcan1.Init.TxFifoQueueMode = FDCAN_TX_FIFO_OPERATION;
@@ -427,6 +501,123 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 4 */
 
+typedef uint16_t CanRequestId;
+
+// Enumeration to specify the result of attempting to process a GCode command
+
+
+// Helper class to manage CAN message buffer pointers, to ensure they get released if an exception occurs
+
+enum class GCodeResult : uint8_t
+{
+	notFinished,					// we haven't finished processing this command
+	ok,								// we have finished processing this code in the current state, and if the GCodeState is 'normal' then we have finished it completely
+	warning,						// the command succeeded but a warning was generated
+	warningNotSupported,			// the command is not supported, but for this command we issue a warning not an error
+	error,							// general error, the reason will be written to the associated reply buffer
+	errorNotSupported,
+	notSupportedInCurrentMode,
+	stopped,						// we are halted because of an emergency stop
+	badOrMissingParameter,
+	remoteInternalError,			// only used if CAN expansion is supported
+	m291Cancelled,
+	// The following are only used of CAN expansion is supported
+	noCanBuffer,					// we failed to allocate a CAN buffer to send a message to an expansion board
+	canResponseTimeout				// timed out waiting for a response to a CAN message - the associated reply buffer may contain more info
+};
+
+constexpr ParamDescriptor M308NewParams[] =
+{
+	FLOAT_PARAM('T'),
+	FLOAT_PARAM('B'),
+	FLOAT_PARAM('C'),
+	FLOAT_PARAM('R'),
+	INT16_PARAM('L'),
+	INT16_PARAM('H'),
+	UINT8_PARAM('F'),
+	UINT8_PARAM('S'),
+	UINT8_PARAM('W'),
+	CHAR_PARAM('K'),
+	REDUCED_STRING_PARAM('Y'),
+	REDUCED_STRING_PARAM('P'),
+	FLOAT16_PARAM('U'),
+	FLOAT16_PARAM('V'),
+	END_PARAMS
+};
+
+GCodeResult ProcessM308(const CanMessageGeneric& msg, const string reply) noexcept
+{
+	CanMessageGenericParser parser(msg, M308NewParams);
+	uint16_t sensorNum;
+	GCodeResult rslt;
+	if (parser.GetUintParam('S', sensorNum))
+	{
+		if (sensorNum < T_SENSORS_COUNT)
+		{
+			// Check for deleting the sensor by assigning a null port. Borrow the sensor type name string temporarily for this.
+			char sensorPinName[MAX_REDUCED_STRING_LENGTH] = {0};
+			char sensorType[MAX_STRING_LENGTH] = {0};
+			if (parser.GetStringParam('P', (char*)&sensorPinName))
+			{
+
+			}
+
+			if (parser.GetStringParam('Y', (char*)&sensorType))
+			{
+//				TemperatureSensor * const newSensor = TemperatureSensor::Create(sensorNum, CanInterface::GetCanAddress(), sensorTypeName.c_str(), reply);
+//				if (newSensor == nullptr)
+//				{
+//					return GCodeResult::error;
+//				}
+
+//				const GCodeResult rslt = newSensor->Configure(parser, reply);
+//				if (rslt == GCodeResult::ok || rslt == GCodeResult::warning)
+//				{
+//					InsertSensor(newSensor);
+//				}
+//				else
+//				{
+//					delete newSensor;
+//				}
+				return rslt;
+			}
+
+//			const auto sensor = FindSensor(sensorNum);
+//			if (sensor.IsNull())
+//			{
+//				reply.printf("Sensor %u does not exist", sensorNum);
+//				return GCodeResult::error;
+//			}
+//			return sensor->Configure(parser, reply);
+		}
+		else
+		{
+//			reply.copy("Sensor number out of range");
+			return GCodeResult::error;
+		}
+	}
+
+//	reply.copy("Missing sensor number parameter");
+	return GCodeResult::error;
+}
+
+//template<class T> T* SetupRequestMessage(CanRequestId rid, CanAddress src, CanAddress dest, CanMessageType msgType) noexcept {
+//		id.SetRequest(msgType, src, dest);
+//		dataLength = sizeof(T);
+//		marker = 0;
+//		extId = 1;
+//		fdMode = 1;
+//		useBrs = 0;
+//		remote = 0;
+//		reportInFifo = 0;
+//		spare = 0;
+//		T* rslt = reinterpret_cast<T*>(&msg);
+//		rslt->SetRequestId(rid);
+//		return rslt;
+//}
+
+int counter = 0;
+
 extern "C" {
 	int _write(int file, char *ptr, int len) {
 		HAL_StatusTypeDef hstatus;
@@ -445,15 +636,88 @@ extern "C" {
 		}
 	}
 
-	void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo0ITs) {
 
-		printf("FDCAN: %u\r\n", RxFifo0ITs);
+
+	void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo0ITs) {
 
 		if((RxFifo0ITs & FDCAN_IT_RX_FIFO0_NEW_MESSAGE) != RESET) {
 
 			/* Retrieve Rx messages from RX FIFO0 */
 			if (HAL_FDCAN_GetRxMessage(hfdcan, FDCAN_RX_FIFO0, &RxHeader, RxData) != HAL_OK) {
 				Error_Handler();
+			}
+
+			CanMessageGeneric* data = reinterpret_cast<CanMessageGeneric*>(&RxData);
+			CanId can;
+			can.SetReceivedId(RxHeader.Identifier);
+
+			if (false && can.MsgType() == CanMessageType::timeSync) {
+				CanMessageTimeSync* timeSync = reinterpret_cast<CanMessageTimeSync*>(&RxData);
+				printf("TimeSync: timeSent: %u, lastTimeSent: %u, lastTimeAcknowledgeDelay: %u, isPrinting: %u, zero: %u, realTime: %u\r\n",
+						timeSync->timeSent,
+						timeSync->lastTimeSent,
+						timeSync->lastTimeAcknowledgeDelay,
+						timeSync->isPrinting,
+						timeSync->zero,
+						timeSync->realTime);
+			}
+
+			if ((can.Dst() == 121 || can.Src() == 121) && can.MsgType() == CanMessageType::sensorTemperaturesReport) {
+				printf("FDCAN: Src: %u, Dst: %u, MsgType: %u, isRequest: %u, isResponse: %u\r\n",
+										can.Src(),
+										can.Dst(),
+										can.MsgType(),
+										can.IsRequest(),
+										can.IsResponse());
+				printHexArray(data->data, 60);
+			}
+
+			if (can.Dst() == 88) {
+
+				counter++;
+				const string reply = "qweqwewqe";
+				ProcessM308(*data, reply);
+				printf("FDCAN: Src: %u, Dst: %u, MsgType: %u, isRequest: %u, isResponse: %u\r\n",
+						can.Src(),
+						can.Dst(),
+						can.MsgType(),
+						can.IsRequest(),
+						can.IsResponse());
+
+				if (true || counter %2 == 0) {
+					CanId can2;
+
+					can2.SetResponse(CanMessageType::standardReply, 88, 0);
+
+					TxHeader.Identifier = can2.GetWholeId();
+					TxHeader.IdType = FDCAN_EXTENDED_ID;
+					TxHeader.TxFrameType = FDCAN_DATA_FRAME;
+					TxHeader.ErrorStateIndicator = FDCAN_ESI_ACTIVE;
+					TxHeader.FDFormat = FDCAN_FD_CAN;
+					TxHeader.BitRateSwitch = FDCAN_BRS_OFF;
+					TxHeader.TxEventFifoControl = FDCAN_NO_TX_EVENTS; // FDCAN_STORE_TX_EVENTS;
+//					TxHeader.MessageMarker = 8;
+					TxHeader.MessageMarker = 0;
+
+					CanMessageStandardReply stdrepl;
+					stdrepl.SetRequestId(data->requestId);
+					stdrepl.resultCode = (uint32_t)GCodeResult::ok;
+					stdrepl.fragmentNumber = 0;
+					stdrepl.moreFollows = 0;
+
+
+					uint32_t dataLen = stdrepl.GetActualDataLength(0);
+					TxHeader.DataLength = dataLen;
+
+					printf("FDCAN Response: ");
+					printHexArray((uint8_t*)&stdrepl, 60);
+
+					if (HAL_FDCAN_AddMessageToTxFifoQ(hfdcan, &TxHeader, (uint8_t*)&stdrepl) != HAL_OK) {
+							/* Transmission request Error */
+							Error_Handler();
+
+					}
+				}
 			}
 	  }
 	}

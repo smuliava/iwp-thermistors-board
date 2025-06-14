@@ -1,0 +1,2 @@
+../Core/Src/CanMessageFormats.cpp:16:8:size_t CanAdjustedLength(size_t)	16	static
+../Core/Src/CanMessageFormats.cpp:24:6:void CanMessageGeneric::DebugPrint(const ParamDescriptor*) const	64	static

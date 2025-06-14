@@ -38,8 +38,8 @@ CPP_DEPS :=
 
 # Every subdirectory with source files must be described here
 SUBDIRS := \
-Core/Src/Heating/Sensors \
 Core/Src \
+Core/Src/Heating/Sensors \
 Core/Startup \
 Drivers/STM32G4xx_HAL_Driver/Src \
 
