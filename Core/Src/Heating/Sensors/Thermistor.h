@@ -23,7 +23,7 @@ private:
 	double bettaAt25;
 	double rThermistor;
 	double rBalance;
-	double betta;
+	double bettaParameter;
 	volatile uint32_t *adcValue;
 
 	double getCurrentThermistorResistance();

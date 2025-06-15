@@ -22,7 +22,7 @@
 
 Thermistor::Thermistor(volatile uint32_t *adcValue, double rThermistor, double betta, double rBalance) {
 	this->adcValue = adcValue;
-	this->betta = betta;
+	this->bettaParameter = betta;
 	this->rBalance = rBalance;
 	this->rThermistor = rThermistor;
 	this->bettaAt25 = betta * TEMP_25_KELVINS;
@@ -35,7 +35,7 @@ double Thermistor::getCurrentThermistorResistance() {
 
 double Thermistor::getTempKelvin() {
 	const double currentThermistorResistence = this->getCurrentThermistorResistance();
-	return this->bettaAt25 / (this->betta + (TEMP_25_KELVINS * (log(currentThermistorResistence / this->rThermistor))));
+	return this->bettaAt25 / (this->bettaParameter + (TEMP_25_KELVINS * (log(currentThermistorResistence / this->rThermistor))));
 }
 
 double Thermistor::getTempCelsius() {

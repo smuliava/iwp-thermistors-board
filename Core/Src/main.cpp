@@ -30,6 +30,8 @@
 #include <cstddef>
 #include <new>
 
+#include "queue.h"
+
 #include <tgmath.h>
 #include <Thermistor.h>
 #include <CanId.h>
@@ -42,6 +44,18 @@ using namespace std;
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
+struct TemperatureReadings {
+	uint32_t pinNumber;
+	uint32_t sensorNumber;
+	double temperature;
+	bool hasError;
+
+	TemperatureReadings(uint32_t pinNumber, uint32_t sensorNumber, double temperature, bool hasError)
+		: pinNumber(pinNumber), sensorNumber(sensorNumber), temperature(temperature), hasError(false) {};
+	TemperatureReadings() {
+		hasError = false;
+	};
+};
 
 /* USER CODE END PTD */
 
@@ -50,6 +64,7 @@ using namespace std;
 #define T_SENSORS_COUNT 54
 #define MAX_REDUCED_STRING_LENGTH 21
 #define MAX_STRING_LENGTH 60
+#define TEMPERATURE_READINGS_QUEUE_LENGTH(itemsPerSensor) 6 * itemsPerSensor
 
 /* USER CODE END PD */
 
@@ -67,19 +82,31 @@ FDCAN_HandleTypeDef hfdcan1;
 UART_HandleTypeDef huart2;
 
 /* Definitions for defaultTask */
-osThreadId_t defaultTaskHandle;
-const osThreadAttr_t defaultTask_attributes = {
-  .name = "defaultTask",
-  .priority = (osPriority_t) osPriorityNormal,
+
+/* USER CODE BEGIN PV */
+osThreadId_t temperatureSensor01ReadingTaskHandle;
+const osThreadAttr_t temperatureSensorReadingTask_attributes = {
+  .name = "TemperatureSensorReading",
   .stack_size = 128 * 4
 };
-/* USER CODE BEGIN PV */
-volatile uint32_t adcValues[] = {0, 0, 0, 0};
-const uint32_t adcBufferSize = sizeof(adcValues) / sizeof(adcValues[0]);
+
+const osThreadAttr_t temperatureSensorSendingTask_attributes = {
+  .name = "TemperatureSensorSending",
+  .stack_size = 128 * 4
+};
+
+
+volatile uint32_t adcValues[] = {0, 0, 0, 0, 0, 0};
+const uint32_t adcBufferLength = sizeof(adcValues) / sizeof(adcValues[0]);
 
 FDCAN_RxHeaderTypeDef RxHeader;
 FDCAN_TxHeaderTypeDef TxHeader;
 uint8_t RxData[120];
+
+QueueHandle_t xTemperatureReadingsQueue;
+
+uint32_t boardAddress;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -89,10 +116,12 @@ static void MX_DMA_Init(void);
 static void MX_ADC1_Init(void);
 static void MX_FDCAN1_Init(void);
 static void MX_USART2_UART_Init(void);
-void StartDefaultTask(void *argument);
 
 /* USER CODE BEGIN PFP */
 static void FDCAN1_StartWithFilters(void);
+void StartTemperatureSensorReadingTask(void *argument);
+void StartTemperatureSendingTask(void *argument);
+void InitializeBoardAddress();
 
 /* USER CODE END PFP */
 
@@ -159,8 +188,9 @@ int main(void)
 //  uint16_t vrefint_cal;                        // VREFINT calibration value
 //  vrefint_cal= *((uint16_t*)VREFINT_CAL_ADDR);
 
-  HAL_ADC_Start_DMA(&hadc1, (uint32_t*)&adcValues, adcBufferSize);
+  HAL_ADC_Start_DMA(&hadc1, (uint32_t*)&adcValues, adcBufferLength);
   FDCAN1_StartWithFilters();
+  InitializeBoardAddress();
 
    /* USER CODE END 2 */
 
@@ -180,12 +210,17 @@ int main(void)
   /* USER CODE END RTOS_TIMERS */
 
   /* USER CODE BEGIN RTOS_QUEUES */
-  /* add queues, ... */
+
+  xTemperatureReadingsQueue = xQueueCreate(TEMPERATURE_READINGS_QUEUE_LENGTH(10), sizeof(TemperatureReadings));
+
+
   /* USER CODE END RTOS_QUEUES */
 
   /* Create the thread(s) */
   /* creation of defaultTask */
-  defaultTaskHandle = osThreadNew(StartDefaultTask, NULL, &defaultTask_attributes);
+
+  osThreadNew(StartTemperatureSensorReadingTask, (void*)&adcValues, &temperatureSensorReadingTask_attributes);
+  osThreadNew(StartTemperatureSendingTask, NULL, &temperatureSensorSendingTask_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
@@ -214,7 +249,7 @@ int main(void)
 	int counter = 0;
   while (1)
   {
-//	  continue;
+	  continue;
 	  //printf("ADC Value: 1: %f, 2: %f, 3: %f, 4: %f\r\n", trm1.getTempCelsius(), trm2.getTempCelsius(), trm3.getTempCelsius(), trm4.getTempCelsius());
 //	  printf("Ping...%u\r\n", counter++);
 	  CanMessageSensorTemperatures tempRep;
@@ -824,6 +859,97 @@ static void FDCAN1_StartWithFilters() {
 	HAL_NVIC_EnableIRQ(FDCAN1_IT0_IRQn);
 }
 
+void StartTemperatureSensorReadingTask(void *argument)
+{
+  /* USER CODE BEGIN 5 */
+	volatile uint32_t *adcValues = ((uint32_t*)argument);
+//	const uint32_t pinNumber = ((TemperatureReadingsAttributes*)argument)->pinNumber; adcBufferLength
+	const Thermistor* theremistors[adcBufferLength];
+
+	for (uint32_t i = 0; i < adcBufferLength; i++) {
+		volatile uint32_t *adcValue = &adcValues[i];
+		Thermistor theremistor = Thermistor(adcValue, 22000.0, 3700, 6790.0);
+		theremistors[i] = &theremistor;
+	}
+    uint32_t currentSensorMeasurements = 0;
+
+    const TickType_t xTicksToWait = pdMS_TO_TICKS(100);
+
+  /* Infinite loop */
+  for(;;)
+  {
+	  const double temperature = ((Thermistor*)theremistors[currentSensorMeasurements])->getTempCelsius();
+	  const TemperatureReadings tempReadings = TemperatureReadings(currentSensorMeasurements, 54, temperature, false);
+
+	  currentSensorMeasurements++;
+	  if (currentSensorMeasurements >= adcBufferLength) {
+		  currentSensorMeasurements = 0;
+	  }
+
+
+
+	  if (xQueueSend(xTemperatureReadingsQueue, &tempReadings, xTicksToWait) != pdPASS) {
+		  // Handle queue send failure (e.g., queue is full)
+		  // In this example, we just increment data, but in a real application
+		  // you might want to handle the error more gracefully.
+	  }
+
+	  vTaskDelay(pdMS_TO_TICKS(200));
+  }
+  /* USER CODE END 5 */
+}
+
+void StartTemperatureSendingTask(void *argument)
+{
+
+	const TickType_t xTicksToWait = pdMS_TO_TICKS(100);
+	TemperatureReadings temperatures[adcBufferLength];
+	FDCAN_TxHeaderTypeDef txBroadcastHeader;
+
+	txBroadcastHeader.IdType = FDCAN_EXTENDED_ID;
+	txBroadcastHeader.TxFrameType = FDCAN_DATA_FRAME;
+	txBroadcastHeader.ErrorStateIndicator = FDCAN_ESI_ACTIVE;
+	txBroadcastHeader.FDFormat = FDCAN_FD_CAN;
+	txBroadcastHeader.BitRateSwitch = FDCAN_BRS_OFF;
+	txBroadcastHeader.TxEventFifoControl = FDCAN_NO_TX_EVENTS;
+	txBroadcastHeader.MessageMarker = 0;
+
+  for(;;)
+  {
+	  TemperatureReadings tempReadings;
+	  if (xQueueReceive(xTemperatureReadingsQueue, &tempReadings, xTicksToWait) == pdPASS) {
+		  temperatures[tempReadings.pinNumber] = tempReadings;
+
+		  CanId canId;
+		  canId.SetRequest(CanMessageType::sensorTemperaturesReport, boardAddress, CanId::BroadcastAddress);
+		  txBroadcastHeader.Identifier = canId.GetWholeId();
+
+		  CanMessageSensorTemperatures tempBroadcast;
+		  tempBroadcast.whichSensors = 0;
+
+		  for (uint32_t i = 0; i < adcBufferLength; i++) {
+			  tempBroadcast.whichSensors |= (uint64_t)1u << temperatures[i].sensorNumber;
+			  tempBroadcast.temperatureReports[i].SetTemperature((float)temperatures[i].temperature);
+		  }
+
+		  txBroadcastHeader.DataLength = tempBroadcast.GetActualDataLength(adcBufferLength);
+
+
+		  if (HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &txBroadcastHeader, (uint8_t*)&tempBroadcast) != HAL_OK) {
+		      Error_Handler();
+		  }
+	  }
+
+	  osDelay(10);
+  }
+
+}
+
+void InitializeBoardAddress() {
+	boardAddress = 88;
+}
+
+
 /* USER CODE END 4 */
 
 /* USER CODE BEGIN Header_StartDefaultTask */
@@ -833,16 +959,7 @@ static void FDCAN1_StartWithFilters() {
   * @retval None
   */
 /* USER CODE END Header_StartDefaultTask */
-void StartDefaultTask(void *argument)
-{
-  /* USER CODE BEGIN 5 */
-  /* Infinite loop */
-  for(;;)
-  {
-    osDelay(1);
-  }
-  /* USER CODE END 5 */
-}
+
 
 /**
   * @brief  Period elapsed callback in non blocking mode
