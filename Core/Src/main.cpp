@@ -29,8 +29,10 @@
 #include <cstdint>
 #include <cstddef>
 #include <new>
+#include <map>
 
 #include "queue.h"
+#include "semphr.h"
 
 #include <tgmath.h>
 #include <Thermistor.h>
@@ -44,27 +46,81 @@ using namespace std;
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
+#define PIN_NAME_LENGTH 6
+
 struct TemperatureReadings {
 	uint32_t pinNumber;
 	uint32_t sensorNumber;
 	double temperature;
 	bool hasError;
+	bool hasReadings;
 
 	TemperatureReadings(uint32_t pinNumber, uint32_t sensorNumber, double temperature, bool hasError)
 		: pinNumber(pinNumber), sensorNumber(sensorNumber), temperature(temperature), hasError(false) {};
 	TemperatureReadings() {
 		hasError = false;
+		hasReadings = false;
 	};
 };
+
+struct ThermistorConfiguration {
+	uint32_t sensorNumber;
+	string pinName; //[PIN_NAME_LENGTH + 1];
+	float thermistorResistanceAt25;
+	float betaValue;
+	float cCoefficient;
+	float seriesResistorValue;
+	bool isPFound;
+	bool isYFound;
+	bool isTFound;
+	bool isBFound;
+	bool isCFound;
+	bool isRFound;
+
+	ThermistorConfiguration() {
+		isPFound = false;
+		isYFound = false;
+		isTFound = false;
+		isBFound = false;
+		isCFound = false;
+		isRFound = false;
+		cCoefficient = 0;
+	}
+};
+
+enum TemperatureError {
+	ok,
+	shortCircuit,
+	shortToVcc,
+	shortToGround,
+	openCircuit,
+	timeout,
+	ioError,
+	hardwareError,
+	notReady,
+	invalidOutputNumber,
+	busBusy,
+	badResponse,
+	unknownPort,
+	notInitialised,
+	unknownSensor,
+	overOrUnderVoltage,
+	badVref,
+	badVssa,
+	unknownError
+};
+
 
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define T_SENSORS_COUNT 54
+#define T_SENSORS_COUNT 64
 #define MAX_REDUCED_STRING_LENGTH 21
 #define MAX_STRING_LENGTH 60
 #define TEMPERATURE_READINGS_QUEUE_LENGTH(itemsPerSensor) 6 * itemsPerSensor
+#define INITIALIZE_PERIFERIAL_QUEUE_LENGTH 4
+#define THERMISTOR_NAME "thermistor"
 
 /* USER CODE END PD */
 
@@ -81,10 +137,16 @@ FDCAN_HandleTypeDef hfdcan1;
 
 UART_HandleTypeDef huart2;
 
+volatile uint32_t adcValues[] = {0, 0, 0, 0, 0, 0};
+const uint32_t adcBufferLength = sizeof(adcValues) / sizeof(adcValues[0]);
+
+Thermistor* theremistors[adcBufferLength];
+
 /* Definitions for defaultTask */
 
 /* USER CODE BEGIN PV */
-osThreadId_t temperatureSensor01ReadingTaskHandle;
+osThreadId_t sensorConfigurationHTaskHandler;
+TaskHandle_t initializePeriferialTaskHendler;
 const osThreadAttr_t temperatureSensorReadingTask_attributes = {
   .name = "TemperatureSensorReading",
   .stack_size = 128 * 4
@@ -92,20 +154,34 @@ const osThreadAttr_t temperatureSensorReadingTask_attributes = {
 
 const osThreadAttr_t temperatureSensorSendingTask_attributes = {
   .name = "TemperatureSensorSending",
-  .stack_size = 128 * 4
+  .stack_size = 128 * 8
 };
-
-
-volatile uint32_t adcValues[] = {0, 0, 0, 0, 0, 0};
-const uint32_t adcBufferLength = sizeof(adcValues) / sizeof(adcValues[0]);
 
 FDCAN_RxHeaderTypeDef RxHeader;
 FDCAN_TxHeaderTypeDef TxHeader;
 uint8_t RxData[120];
 
-QueueHandle_t xTemperatureReadingsQueue;
+QueueHandle_t xInitializePeriferialQueue;
 
 uint32_t boardAddress;
+
+const string pinNames[adcBufferLength] = {
+		"temp0",
+		"temp1",
+		"temp2",
+		"temp3",
+		"temp4",
+		"temp5"
+};
+
+map<string, uint32_t> pinNamesMap = {
+		{pinNames[0], 0},
+		{pinNames[1], 1},
+		{pinNames[2], 2},
+		{pinNames[3], 3},
+		{pinNames[4], 4},
+		{pinNames[5], 5}
+};
 
 /* USER CODE END PV */
 
@@ -121,7 +197,9 @@ static void MX_USART2_UART_Init(void);
 static void FDCAN1_StartWithFilters(void);
 void StartTemperatureSensorReadingTask(void *argument);
 void StartTemperatureSendingTask(void *argument);
+void StartInitializePeriferialTask(void *argument);
 void InitializeBoardAddress();
+void InitializeThermistors();
 
 /* USER CODE END PFP */
 
@@ -189,8 +267,9 @@ int main(void)
 //  vrefint_cal= *((uint16_t*)VREFINT_CAL_ADDR);
 
   HAL_ADC_Start_DMA(&hadc1, (uint32_t*)&adcValues, adcBufferLength);
-  FDCAN1_StartWithFilters();
   InitializeBoardAddress();
+  InitializeThermistors();
+  FDCAN1_StartWithFilters();
 
    /* USER CODE END 2 */
 
@@ -211,7 +290,7 @@ int main(void)
 
   /* USER CODE BEGIN RTOS_QUEUES */
 
-  xTemperatureReadingsQueue = xQueueCreate(TEMPERATURE_READINGS_QUEUE_LENGTH(10), sizeof(TemperatureReadings));
+  xInitializePeriferialQueue = xQueueCreate(INITIALIZE_PERIFERIAL_QUEUE_LENGTH, sizeof(ThermistorConfiguration));
 
 
   /* USER CODE END RTOS_QUEUES */
@@ -219,8 +298,8 @@ int main(void)
   /* Create the thread(s) */
   /* creation of defaultTask */
 
-  osThreadNew(StartTemperatureSensorReadingTask, (void*)&adcValues, &temperatureSensorReadingTask_attributes);
-  osThreadNew(StartTemperatureSendingTask, NULL, &temperatureSensorSendingTask_attributes);
+  sensorConfigurationHTaskHandler = osThreadNew(StartTemperatureSensorReadingTask, (void*)&adcValues, &temperatureSensorReadingTask_attributes);
+  sensorConfigurationHTaskHandler = osThreadNew(StartTemperatureSendingTask, NULL, &temperatureSensorSendingTask_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
@@ -237,16 +316,6 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  const double BALANCE_RESISTOR = 6790.0;
-	const double BETA = 3740.0;
-	const double ROOM_TEMP = 298.15;
-	const double RESISTOR_ROOM_TEMP = 22000.0;
-
-	Thermistor trm1 = Thermistor(&adcValues[0], RESISTOR_ROOM_TEMP, BETA, BALANCE_RESISTOR);
-	Thermistor trm2 = Thermistor(&adcValues[1], RESISTOR_ROOM_TEMP, BETA, BALANCE_RESISTOR);
-	Thermistor trm3 = Thermistor(&adcValues[2], RESISTOR_ROOM_TEMP, BETA, BALANCE_RESISTOR);
-	Thermistor trm4 = Thermistor(&adcValues[3], RESISTOR_ROOM_TEMP, BETA, BALANCE_RESISTOR);
-	int counter = 0;
   while (1)
   {
 	  continue;
@@ -258,7 +327,7 @@ int main(void)
 	  tempRep.temperatureReports[0].SetTemperature(22.642);
 	  CanId canTemp;
 
-	  canTemp.SetRequest(CanMessageType::sensorTemperaturesReport, 88, 127);
+	  canTemp.SetRequest(CanMessageType::sensorTemperaturesReport, boardAddress, CanId::BroadcastAddress);
 
 		TxHeader.Identifier = canTemp.GetWholeId();
 		TxHeader.IdType = FDCAN_EXTENDED_ID;
@@ -499,7 +568,7 @@ static void MX_FDCAN1_Init(void)
   hfdcan1.Init.ClockDivider = FDCAN_CLOCK_DIV1;
   hfdcan1.Init.FrameFormat = FDCAN_FRAME_FD_NO_BRS;
   hfdcan1.Init.Mode = FDCAN_MODE_NORMAL;
-  hfdcan1.Init.AutoRetransmission = DISABLE;
+  hfdcan1.Init.AutoRetransmission = ENABLE;
   hfdcan1.Init.TransmitPause = DISABLE;
   hfdcan1.Init.ProtocolException = DISABLE;
   hfdcan1.Init.NominalPrescaler = 12;
@@ -654,43 +723,59 @@ constexpr ParamDescriptor M308NewParams[] =
 	END_PARAMS
 };
 
-GCodeResult ProcessM308(const CanMessageGeneric& msg, const string reply) noexcept
+GCodeResult ProcessM308(const CanMessageGeneric& msg, ThermistorConfiguration& config, const string reply) noexcept
 {
 	CanMessageGenericParser parser(msg, M308NewParams);
-	uint16_t sensorNum;
-	GCodeResult rslt;
-	if (parser.GetUintParam('S', sensorNum))
+
+	if (parser.GetUintParam('S', config.sensorNumber))
 	{
-		if (sensorNum < T_SENSORS_COUNT)
+		if (config.sensorNumber < T_SENSORS_COUNT)
 		{
-			// Check for deleting the sensor by assigning a null port. Borrow the sensor type name string temporarily for this.
-			char sensorPinName[MAX_REDUCED_STRING_LENGTH] = {0};
-			char sensorType[MAX_STRING_LENGTH] = {0};
-			if (parser.GetStringParam('P', (char*)&sensorPinName))
-			{
+			//char sensorPinName[MAX_REDUCED_STRING_LENGTH] = {0};
+			string sensorType;
 
+			// ToDo: cut pin name to 5 symbols
+
+			if (parser.GetStringParam('P', config.pinName)) {
+
+				config.pinName[5] = 0;
+				for (uint32_t i = 0; i < adcBufferLength; i++) {
+					if (pinNames[i] == config.pinName) {
+						config.isPFound = true;
+						break;
+					}
+				}
+
+				if (!config.isPFound) {
+					return GCodeResult::error;
+				}
 			}
 
-			if (parser.GetStringParam('Y', (char*)&sensorType))
-			{
-//				TemperatureSensor * const newSensor = TemperatureSensor::Create(sensorNum, CanInterface::GetCanAddress(), sensorTypeName.c_str(), reply);
-//				if (newSensor == nullptr)
-//				{
-//					return GCodeResult::error;
-//				}
+			if (parser.GetStringParam('Y', sensorType)) {
+				if (sensorType == THERMISTOR_NAME) { // ToDo: provide case insensitive comparison
+					config.isYFound = true;
 
-//				const GCodeResult rslt = newSensor->Configure(parser, reply);
-//				if (rslt == GCodeResult::ok || rslt == GCodeResult::warning)
-//				{
-//					InsertSensor(newSensor);
-//				}
-//				else
-//				{
-//					delete newSensor;
-//				}
-				return rslt;
+				}
+				if (!config.isTFound) {
+					//return GCodeResult::error;
+				}
 			}
 
+			if (parser.GetFloatParam('T', config.thermistorResistanceAt25)) {
+				config.isTFound = true;
+			}
+
+			if (parser.GetFloatParam('B', config.betaValue)) {
+				config.isBFound = true;
+			}
+
+			if (parser.GetFloatParam('C', config.cCoefficient)) {
+				config.isCFound = true;
+			}
+
+			if (parser.GetFloatParam('R', config.seriesResistorValue)) {
+				config.isRFound = true;
+			}
 //			const auto sensor = FindSensor(sensorNum);
 //			if (sensor.IsNull())
 //			{
@@ -698,11 +783,12 @@ GCodeResult ProcessM308(const CanMessageGeneric& msg, const string reply) noexce
 //				return GCodeResult::error;
 //			}
 //			return sensor->Configure(parser, reply);
+			return GCodeResult::ok;
 		}
 		else
 		{
 //			reply.copy("Sensor number out of range");
-			return GCodeResult::error;
+			return GCodeResult::ok;
 		}
 	}
 
@@ -771,7 +857,7 @@ extern "C" {
 						timeSync->realTime);
 			}
 
-			if ((can.Dst() == 121 || can.Src() == 121) && can.MsgType() == CanMessageType::sensorTemperaturesReport) {
+			if (false && (can.Dst() == 121 || can.Src() == 121) && can.MsgType() == CanMessageType::sensorTemperaturesReport) {
 				printf("FDCAN: Src: %u, Dst: %u, MsgType: %u, isRequest: %u, isResponse: %u\r\n",
 										can.Src(),
 										can.Dst(),
@@ -781,11 +867,16 @@ extern "C" {
 				printHexArray(data->data, 60);
 			}
 
-			if (can.Dst() == 88) {
+			if (can.Dst() == boardAddress) {
 
 				counter++;
-				const string reply = "qweqwewqe";
-				ProcessM308(*data, reply);
+				const string reply = "";
+				ThermistorConfiguration thermistorConfig;
+				GCodeResult parceResult = ProcessM308(*data, thermistorConfig, reply);
+
+				BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+				xQueueSendFromISR(xInitializePeriferialQueue, &thermistorConfig, &xHigherPriorityTaskWoken);
+
 				printf("FDCAN: Src: %u, Dst: %u, MsgType: %u, isRequest: %u, isResponse: %u\r\n",
 						can.Src(),
 						can.Dst(),
@@ -793,10 +884,14 @@ extern "C" {
 						can.IsRequest(),
 						can.IsResponse());
 
+				if (counter %2 == 0) {
+					printf("Second paccet \r\n");
+				}
+
 				if (true || counter %2 == 0) {
 					CanId can2;
 
-					can2.SetResponse(CanMessageType::standardReply, 88, 0);
+					can2.SetResponse(CanMessageType::standardReply, boardAddress, 0);
 
 					TxHeader.Identifier = can2.GetWholeId();
 					TxHeader.IdType = FDCAN_EXTENDED_ID;
@@ -805,12 +900,11 @@ extern "C" {
 					TxHeader.FDFormat = FDCAN_FD_CAN;
 					TxHeader.BitRateSwitch = FDCAN_BRS_OFF;
 					TxHeader.TxEventFifoControl = FDCAN_NO_TX_EVENTS; // FDCAN_STORE_TX_EVENTS;
-//					TxHeader.MessageMarker = 8;
 					TxHeader.MessageMarker = 0;
 
 					CanMessageStandardReply stdrepl;
 					stdrepl.SetRequestId(data->requestId);
-					stdrepl.resultCode = (uint32_t)GCodeResult::ok;
+					stdrepl.resultCode = (uint32_t)parceResult;
 					stdrepl.fragmentNumber = 0;
 					stdrepl.moreFollows = 0;
 
@@ -819,7 +913,7 @@ extern "C" {
 					TxHeader.DataLength = dataLen;
 
 					printf("FDCAN Response: ");
-					printHexArray((uint8_t*)&stdrepl, 60);
+					//printHexArray((uint8_t*)&stdrepl, 60);
 
 					if (HAL_FDCAN_AddMessageToTxFifoQ(hfdcan, &TxHeader, (uint8_t*)&stdrepl) != HAL_OK) {
 							/* Transmission request Error */
@@ -855,55 +949,51 @@ static void FDCAN1_StartWithFilters() {
 		printf("[CAN] Unable to activate the CAN interrupt!\n");
 	}
 
-	HAL_NVIC_SetPriority(FDCAN1_IT0_IRQn, 0, 0);
+	HAL_NVIC_SetPriority(FDCAN1_IT0_IRQn, 5, 0);
 	HAL_NVIC_EnableIRQ(FDCAN1_IT0_IRQn);
 }
 
 void StartTemperatureSensorReadingTask(void *argument)
 {
-  /* USER CODE BEGIN 5 */
-	volatile uint32_t *adcValues = ((uint32_t*)argument);
-//	const uint32_t pinNumber = ((TemperatureReadingsAttributes*)argument)->pinNumber; adcBufferLength
-	const Thermistor* theremistors[adcBufferLength];
-
-	for (uint32_t i = 0; i < adcBufferLength; i++) {
-		volatile uint32_t *adcValue = &adcValues[i];
-		Thermistor theremistor = Thermistor(adcValue, 22000.0, 3700, 6790.0);
-		theremistors[i] = &theremistor;
-	}
+	ThermistorConfiguration thermistorConfig;
     uint32_t currentSensorMeasurements = 0;
 
     const TickType_t xTicksToWait = pdMS_TO_TICKS(100);
 
-  /* Infinite loop */
+
   for(;;)
   {
-	  const double temperature = ((Thermistor*)theremistors[currentSensorMeasurements])->getTempCelsius();
-	  const TemperatureReadings tempReadings = TemperatureReadings(currentSensorMeasurements, 54, temperature, false);
+	  if (xQueueReceive(xInitializePeriferialQueue, &thermistorConfig, xTicksToWait) == pdPASS) {
+		  if (pinNamesMap.contains(thermistorConfig.pinName)) {
+			  const uint32_t thermistorIndex = pinNamesMap[thermistorConfig.pinName];
+			  Thermistor* thermistor = theremistors[thermistorIndex];
+
+			  thermistor->setBettaParameterValue(thermistorConfig.betaValue);
+			  thermistor->setCCoefficientValue(thermistorConfig.cCoefficient);
+			  thermistor->setSeriesResistorValue(thermistorConfig.seriesResistorValue);
+
+			  thermistor->setSensorNumberValue(thermistorConfig.sensorNumber);
+		  }
+	  }
+
+
+	  Thermistor* thermistor = (Thermistor*)theremistors[currentSensorMeasurements];
+	  if (thermistor->isInitialized) {
+		  thermistor->updateTemperature();
+	  }
 
 	  currentSensorMeasurements++;
 	  if (currentSensorMeasurements >= adcBufferLength) {
-		  currentSensorMeasurements = 0;
+			  currentSensorMeasurements = 0;
 	  }
 
-
-
-	  if (xQueueSend(xTemperatureReadingsQueue, &tempReadings, xTicksToWait) != pdPASS) {
-		  // Handle queue send failure (e.g., queue is full)
-		  // In this example, we just increment data, but in a real application
-		  // you might want to handle the error more gracefully.
-	  }
-
-	  vTaskDelay(pdMS_TO_TICKS(200));
+	  osDelay(1);
   }
   /* USER CODE END 5 */
 }
 
 void StartTemperatureSendingTask(void *argument)
 {
-
-	const TickType_t xTicksToWait = pdMS_TO_TICKS(100);
-	TemperatureReadings temperatures[adcBufferLength];
 	FDCAN_TxHeaderTypeDef txBroadcastHeader;
 
 	txBroadcastHeader.IdType = FDCAN_EXTENDED_ID;
@@ -914,33 +1004,41 @@ void StartTemperatureSendingTask(void *argument)
 	txBroadcastHeader.TxEventFifoControl = FDCAN_NO_TX_EVENTS;
 	txBroadcastHeader.MessageMarker = 0;
 
-  for(;;)
-  {
-	  TemperatureReadings tempReadings;
-	  if (xQueueReceive(xTemperatureReadingsQueue, &tempReadings, xTicksToWait) == pdPASS) {
-		  temperatures[tempReadings.pinNumber] = tempReadings;
+  for(;;) {
 
-		  CanId canId;
-		  canId.SetRequest(CanMessageType::sensorTemperaturesReport, boardAddress, CanId::BroadcastAddress);
-		  txBroadcastHeader.Identifier = canId.GetWholeId();
 
-		  CanMessageSensorTemperatures tempBroadcast;
-		  tempBroadcast.whichSensors = 0;
+	  CanMessageSensorTemperatures tempBroadcast;
+	  tempBroadcast.whichSensors = 0;
 
-		  for (uint32_t i = 0; i < adcBufferLength; i++) {
-			  tempBroadcast.whichSensors |= (uint64_t)1u << temperatures[i].sensorNumber;
-			  tempBroadcast.temperatureReports[i].SetTemperature((float)temperatures[i].temperature);
+	  uint32_t initializedSensorsCount = 0;
+	  for (uint32_t i = 0; i < adcBufferLength; i++) {
+		  if (!theremistors[i]->isInitialized) {
+			  continue;
 		  }
 
-		  txBroadcastHeader.DataLength = tempBroadcast.GetActualDataLength(adcBufferLength);
+		  const uint8_t semsorNumber = theremistors[i]->getSensorNumberValue();
+		  const float temperature = (float)theremistors[i]->getLastKnownTemperatureC();
+		  tempBroadcast.whichSensors |= (uint64_t)1u << semsorNumber;
+		  tempBroadcast.temperatureReports[initializedSensorsCount].SetTemperature(temperature);
+		  tempBroadcast.temperatureReports[initializedSensorsCount].errorCode = TemperatureError::ok;
 
-
-		  if (HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &txBroadcastHeader, (uint8_t*)&tempBroadcast) != HAL_OK) {
-		      Error_Handler();
-		  }
+		  initializedSensorsCount++;
 	  }
 
-	  osDelay(10);
+	  if (initializedSensorsCount > 0) {
+		  CanId canId;
+		  canId.SetRequest(CanMessageType::sensorTemperaturesReport, boardAddress, CanId::BroadcastAddress);
+
+
+		  txBroadcastHeader.Identifier = canId.GetWholeId();
+		  txBroadcastHeader.DataLength = tempBroadcast.GetActualDataLength(1) + 2;
+
+		  if (HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &txBroadcastHeader, (uint8_t*)&tempBroadcast) != HAL_OK) {
+			  Error_Handler();
+		  }
+
+	  }
+	  osDelay(500);
   }
 
 }
@@ -949,6 +1047,13 @@ void InitializeBoardAddress() {
 	boardAddress = 88;
 }
 
+void InitializeThermistors() {
+	for (uint32_t i = 0; i < adcBufferLength; i++) {
+		volatile uint32_t *adcValue = &adcValues[i];
+		Thermistor* theremistor = new Thermistor(adcValue, pinNames[i]);
+		theremistors[i] = theremistor;
+	}
+}
 
 /* USER CODE END 4 */
 

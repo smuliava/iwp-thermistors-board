@@ -11,7 +11,7 @@ using namespace std;
 
 typedef float float16_t;			///< A 16-bit floating point type
 
-bool CanMessageGenericParser::GetStringParam(char c, char* v) const noexcept
+bool CanMessageGenericParser::GetStringParam(char c, string &v) const noexcept
 {
 	unsigned int pos;
 	const ParamDescriptor::ParamType type = FindParameter(c, pos);
@@ -19,7 +19,8 @@ bool CanMessageGenericParser::GetStringParam(char c, char* v) const noexcept
 	{
 		const char* src = ((const char*)msg.data + pos);
 		const uint32_t scrLen = strlen(src);
-		strncpy(v, src, scrLen);
+		//strncpy(v, src, scrLen);
+		v = src;
 		return true;
 	}
 	return false;
@@ -162,11 +163,11 @@ bool CanMessageGenericParser::GetFloatParam(char c, float& v) const noexcept
 	switch (type)
 	{
 	case ParamDescriptor::ParamType::float_p:
-		//v = LoadLEF32(msg.data + pos);
+		v = LoadLEF32(msg.data + pos);
 		return true;
 
 	case ParamDescriptor::ParamType::float16_p:
-		//v = LoadLEF16(msg.data + pos);
+		v = LoadLEF16(msg.data + pos);
 		return true;
 
 	default:

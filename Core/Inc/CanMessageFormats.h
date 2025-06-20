@@ -21,13 +21,16 @@ constexpr unsigned int MaxHeatersPerCanSlave = 6;
 
 size_t CanAdjustedLength(size_t rawLength) noexcept;
 
-static inline void copy4bytes(const void *s, void *d) noexcept
-{
-	memcpy(d, s, sizeof(float));
+static inline void copy4bytes(const void *s, void *d) noexcept {
+	memcpy(d, s, 4);
 }
 
-static inline void StoreLEF32(void *p, const float val) noexcept
-{
+static inline void copy2bytes(const void *s, void *d) noexcept {
+	memcpy(d, s, 2);
+}
+
+
+static inline void StoreLEF32(void *p, const float val) noexcept {
 	copy4bytes(&val, p);
 }
 
@@ -38,6 +41,13 @@ static inline float LoadLEF32(const void *p) noexcept
 	float rslt;
 	copy4bytes(p, &rslt);
 	return rslt;
+}
+
+static inline float LoadLEF16(const void *p) noexcept
+{
+	__fp16 rslt;
+	copy2bytes(p, &rslt);
+	return (float)rslt;
 }
 
 // CAN message formats
