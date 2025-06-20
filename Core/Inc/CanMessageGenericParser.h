@@ -30,7 +30,7 @@ public:
 	bool GetIntParam(char c, int8_t& v) const noexcept;
 	bool GetFloatParam(char c, float& v) const noexcept;
 	bool GetCharParam(char c, char& v) const noexcept;
-	bool GetStringParam(char c, char* v) const noexcept;
+	bool GetStringParam(char c, string &v) const noexcept;
 	bool GetBoolParam(char c, bool &v) const noexcept;
 
 	bool GetArrayParam(char c, ParamDescriptor::ParamType pt, size_t& numValues, const uint8_t*& values) const noexcept;

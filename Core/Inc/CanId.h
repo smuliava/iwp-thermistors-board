@@ -158,18 +158,6 @@ class CanId
 
 public:
 	static constexpr CanAddress MasterAddress = 0;							// main boards (except ATE main boards) have address 0
-	static constexpr CanAddress ATECMBoardFirstAddress = 90;
-	static constexpr CanAddress ATEIOBoardFirstAddress = 95;
-	static constexpr CanAddress ATECMBoardDefaultAddress = 118;
-	static constexpr CanAddress ATEIOBoardDefaultAddress = 119;
-	static constexpr CanAddress SZPDefaultAddress = 120;
-	static constexpr CanAddress ToolBoardDefaultAddress = 121;				// default address for tool boards
-	static constexpr CanAddress Exp1XDBoardDefaultAddress = 122;
-	static constexpr CanAddress Exp1HCLBoardDefaultAddress = 123;
-	static constexpr CanAddress SammyC21DefaultAddress = 124;
-	static constexpr CanAddress ATEMasterAddress = 125;						// the address of the ATE main board
-	static constexpr CanAddress Exp3HCFirmwareUpdateAddress = 126;			// special address we use for backup firmware update system (board ID switches set to zero on 3HC)
-	static constexpr CanAddress MaxCanAddress = 126;						// maximum CAN address including the firmware update address
 	static constexpr CanAddress BroadcastAddress = 127;
 	static constexpr CanAddress NoAddress = 255;
 

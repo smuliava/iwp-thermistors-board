@@ -46,7 +46,19 @@ using namespace std;
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-#define PIN_NAME_LENGTH 6
+#define PIN_NAME_LENGTH 5
+#define BOARD_DEFAULT_ADDRESS 88;
+#define EEPROM_DEVICE_ADDRESS 0b10101110
+#define EEPROM_WRITE_READ_TIMEOUT 10000
+#define EEPROM_MEM_SIZE 2
+#define EEPROM_STORAGE_STATE_SIZE sizeof(uint16_t)
+#define EEPROM_ADDRESS_SIZE sizeof(uint16_t)
+#define EEPROM_THERMISTORS_STATUS_SIZE sizeof(uint64_t)
+
+#define EEPROM_CONFIGURATION_SIGNATURE "iwpThrmCfg8"
+#define EEPROM_CONFIGURATION_SIGNATURE_SIZE sizeof(EEPROM_CONFIGURATION_SIGNATURE)
+#define EEPROM_CONFIGURATION_SIGNATURE_ADDRESS 0
+
 
 struct TemperatureReadings {
 	uint32_t pinNumber;
@@ -88,6 +100,52 @@ struct ThermistorConfiguration {
 	}
 };
 
+enum SavedConfigurationState {
+	emptyEEPROM,
+	providedSignatureAndBoardAddress,
+	thermistorsConfigured
+};
+
+volatile uint32_t adcValues[] = {0, 0, 0, 0, 0, 0};
+const uint32_t adcBufferLength = sizeof(adcValues) / sizeof(adcValues[0]);
+
+const string pinNames[adcBufferLength] = {
+		"temp0",
+		"temp1",
+		"temp2",
+		"temp3",
+		"temp4",
+		"temp5"
+};
+
+struct  __attribute__((packed)) ThermistorSavedConfiguration {
+	uint32_t sensorNumber = 255;
+	float thermistorResistanceAt25 = R_THERMISTOR_DEFAULT;
+	float betaValue = BETTA_DEFAULT;
+	float cCoefficient = 0;
+	float seriesResistorValue = R_BALANCE_DEFAULT;
+
+	ThermistorSavedConfiguration(uint32_t sensorNumber): sensorNumber(sensorNumber) {};
+};
+
+
+
+struct __attribute__((packed)) BoardConfiguration {
+	uint8_t boardSignature[EEPROM_CONFIGURATION_SIGNATURE_SIZE] = {0};
+	SavedConfigurationState configurationState = SavedConfigurationState::emptyEEPROM;
+	uint16_t boardAddress;
+	ThermistorSavedConfiguration thermistorConfiguration[6] = {
+		ThermistorSavedConfiguration(0),
+		ThermistorSavedConfiguration(1),
+		ThermistorSavedConfiguration(2),
+		ThermistorSavedConfiguration(3),
+		ThermistorSavedConfiguration(4),
+		ThermistorSavedConfiguration(5)
+	};
+
+	BoardConfiguration() {}
+};
+
 enum TemperatureError {
 	ok,
 	shortCircuit,
@@ -122,6 +180,7 @@ enum TemperatureError {
 #define INITIALIZE_PERIFERIAL_QUEUE_LENGTH 4
 #define THERMISTOR_NAME "thermistor"
 
+
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -135,10 +194,13 @@ DMA_HandleTypeDef hdma_adc1;
 
 FDCAN_HandleTypeDef hfdcan1;
 
-UART_HandleTypeDef huart2;
+I2C_HandleTypeDef hi2c1;
 
-volatile uint32_t adcValues[] = {0, 0, 0, 0, 0, 0};
-const uint32_t adcBufferLength = sizeof(adcValues) / sizeof(adcValues[0]);
+TIM_HandleTypeDef htim2;
+TIM_HandleTypeDef htim3;
+TIM_HandleTypeDef htim4;
+
+UART_HandleTypeDef huart2;
 
 Thermistor* theremistors[adcBufferLength];
 
@@ -165,14 +227,7 @@ QueueHandle_t xInitializePeriferialQueue;
 
 uint32_t boardAddress;
 
-const string pinNames[adcBufferLength] = {
-		"temp0",
-		"temp1",
-		"temp2",
-		"temp3",
-		"temp4",
-		"temp5"
-};
+
 
 map<string, uint32_t> pinNamesMap = {
 		{pinNames[0], 0},
@@ -192,14 +247,20 @@ static void MX_DMA_Init(void);
 static void MX_ADC1_Init(void);
 static void MX_FDCAN1_Init(void);
 static void MX_USART2_UART_Init(void);
+static void MX_I2C1_Init(void);
+static void MX_TIM2_Init(void);
+static void MX_TIM3_Init(void);
+static void MX_TIM4_Init(void);
+void StartDefaultTask(void *argument);
 
 /* USER CODE BEGIN PFP */
 static void FDCAN1_StartWithFilters(void);
 void StartTemperatureSensorReadingTask(void *argument);
 void StartTemperatureSendingTask(void *argument);
 void StartInitializePeriferialTask(void *argument);
-void InitializeBoardAddress();
-void InitializeThermistors();
+void InitializeBoardAddress(uint32_t address);
+void InitializeThermistors(ThermistorSavedConfiguration* thermistorConfiguration);
+void InitializeConfiguration();
 
 /* USER CODE END PFP */
 
@@ -257,6 +318,10 @@ int main(void)
   MX_ADC1_Init();
   MX_FDCAN1_Init();
   MX_USART2_UART_Init();
+  MX_I2C1_Init();
+  MX_TIM2_Init();
+  MX_TIM3_Init();
+  MX_TIM4_Init();
   /* USER CODE BEGIN 2 */
 
   HAL_ADC_Stop(&hadc1);
@@ -267,12 +332,13 @@ int main(void)
 //  vrefint_cal= *((uint16_t*)VREFINT_CAL_ADDR);
 
   HAL_ADC_Start_DMA(&hadc1, (uint32_t*)&adcValues, adcBufferLength);
-  InitializeBoardAddress();
-  InitializeThermistors();
   FDCAN1_StartWithFilters();
+
+  InitializeConfiguration();
 
    /* USER CODE END 2 */
 
+  while(1);
   /* Init scheduler */
   osKernelInitialize();
 
@@ -593,6 +659,230 @@ static void MX_FDCAN1_Init(void)
 }
 
 /**
+  * @brief I2C1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_I2C1_Init(void)
+{
+
+  /* USER CODE BEGIN I2C1_Init 0 */
+
+  /* USER CODE END I2C1_Init 0 */
+
+  /* USER CODE BEGIN I2C1_Init 1 */
+
+  /* USER CODE END I2C1_Init 1 */
+  hi2c1.Instance = I2C1;
+  hi2c1.Init.Timing = 0x20B21E5A;
+  hi2c1.Init.OwnAddress1 = 0;
+  hi2c1.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
+  hi2c1.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
+  hi2c1.Init.OwnAddress2 = 0;
+  hi2c1.Init.OwnAddress2Masks = I2C_OA2_NOMASK;
+  hi2c1.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
+  hi2c1.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
+  if (HAL_I2C_Init(&hi2c1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /** Configure Analogue filter
+  */
+  if (HAL_I2CEx_ConfigAnalogFilter(&hi2c1, I2C_ANALOGFILTER_ENABLE) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /** Configure Digital filter
+  */
+  if (HAL_I2CEx_ConfigDigitalFilter(&hi2c1, 0) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN I2C1_Init 2 */
+
+  /* USER CODE END I2C1_Init 2 */
+
+}
+
+/**
+  * @brief TIM2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM2_Init(void)
+{
+
+  /* USER CODE BEGIN TIM2_Init 0 */
+
+  /* USER CODE END TIM2_Init 0 */
+
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+  TIM_OC_InitTypeDef sConfigOC = {0};
+
+  /* USER CODE BEGIN TIM2_Init 1 */
+
+  /* USER CODE END TIM2_Init 1 */
+  htim2.Instance = TIM2;
+  htim2.Init.Prescaler = 0;
+  htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim2.Init.Period = 4294967295;
+  htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_PWM_Init(&htim2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim2, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sConfigOC.OCMode = TIM_OCMODE_PWM1;
+  sConfigOC.Pulse = 0;
+  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
+  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
+  if (HAL_TIM_PWM_ConfigChannel(&htim2, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_TIM_PWM_ConfigChannel(&htim2, &sConfigOC, TIM_CHANNEL_3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_TIM_PWM_ConfigChannel(&htim2, &sConfigOC, TIM_CHANNEL_4) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM2_Init 2 */
+
+  /* USER CODE END TIM2_Init 2 */
+  HAL_TIM_MspPostInit(&htim2);
+
+}
+
+/**
+  * @brief TIM3 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM3_Init(void)
+{
+
+  /* USER CODE BEGIN TIM3_Init 0 */
+
+  /* USER CODE END TIM3_Init 0 */
+
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+  TIM_OC_InitTypeDef sConfigOC = {0};
+
+  /* USER CODE BEGIN TIM3_Init 1 */
+
+  /* USER CODE END TIM3_Init 1 */
+  htim3.Instance = TIM3;
+  htim3.Init.Prescaler = 0;
+  htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim3.Init.Period = 65535;
+  htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_PWM_Init(&htim3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim3, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sConfigOC.OCMode = TIM_OCMODE_PWM1;
+  sConfigOC.Pulse = 0;
+  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
+  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
+  if (HAL_TIM_PWM_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_TIM_PWM_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_TIM_PWM_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_TIM_PWM_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_4) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM3_Init 2 */
+
+  /* USER CODE END TIM3_Init 2 */
+  HAL_TIM_MspPostInit(&htim3);
+
+}
+
+/**
+  * @brief TIM4 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM4_Init(void)
+{
+
+  /* USER CODE BEGIN TIM4_Init 0 */
+
+  /* USER CODE END TIM4_Init 0 */
+
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+  TIM_OC_InitTypeDef sConfigOC = {0};
+
+  /* USER CODE BEGIN TIM4_Init 1 */
+
+  /* USER CODE END TIM4_Init 1 */
+  htim4.Instance = TIM4;
+  htim4.Init.Prescaler = 0;
+  htim4.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim4.Init.Period = 65535;
+  htim4.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim4.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_PWM_Init(&htim4) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_TIM_OC_Init(&htim4) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim4, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sConfigOC.OCMode = TIM_OCMODE_PWM1;
+  sConfigOC.Pulse = 0;
+  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
+  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
+  if (HAL_TIM_PWM_ConfigChannel(&htim4, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sConfigOC.OCMode = TIM_OCMODE_TIMING;
+  if (HAL_TIM_OC_ConfigChannel(&htim4, &sConfigOC, TIM_CHANNEL_2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM4_Init 2 */
+
+  /* USER CODE END TIM4_Init 2 */
+  HAL_TIM_MspPostInit(&htim4);
+
+}
+
+/**
   * @brief USART2 Initialization Function
   * @param None
   * @retval None
@@ -831,8 +1121,6 @@ extern "C" {
 		}
 	}
 
-
-
 	void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo0ITs) {
 
 		if((RxFifo0ITs & FDCAN_IT_RX_FIFO0_NEW_MESSAGE) != RESET) {
@@ -1043,14 +1331,100 @@ void StartTemperatureSendingTask(void *argument)
 
 }
 
-void InitializeBoardAddress() {
-	boardAddress = 88;
+void InitializeBoardAddress(uint32_t address) {
+	boardAddress = address;
 }
 
-void InitializeThermistors() {
+HAL_StatusTypeDef readFromEEPROM(uint16_t address, uint8_t* buf, uint16_t length) {
+	HAL_StatusTypeDef status = HAL_I2C_Mem_Read(
+			&hi2c1,
+			EEPROM_DEVICE_ADDRESS,
+			address,
+			EEPROM_MEM_SIZE,
+			buf,
+			length,
+			EEPROM_WRITE_READ_TIMEOUT
+		);
+	return status;
+}
+
+HAL_StatusTypeDef writeToEEPROM(uint16_t address, uint8_t* buf, uint16_t length) {
+	HAL_StatusTypeDef status = HAL_I2C_Mem_Write(
+		  &hi2c1,
+		  EEPROM_DEVICE_ADDRESS,
+		  address,
+		  EEPROM_MEM_SIZE,
+		  buf,
+		  length,
+		  EEPROM_WRITE_READ_TIMEOUT
+	  );
+	HAL_Delay(100);
+
+	return status;
+}
+
+void InitializeConfiguration() {
+	// Read configuration Signature + 1 byte if EEPROM initialized
+	BoardConfiguration configuration;
+	if (readFromEEPROM(EEPROM_CONFIGURATION_SIGNATURE_ADDRESS, (uint8_t*)&configuration, sizeof(configuration)) != HAL_OK) {
+		Error_Handler();
+	}
+
+	if (memcmp(EEPROM_CONFIGURATION_SIGNATURE, &configuration.boardSignature, EEPROM_CONFIGURATION_SIGNATURE_SIZE) != 0) {
+		configuration = BoardConfiguration();
+		memcpy(&configuration.boardSignature, EEPROM_CONFIGURATION_SIGNATURE, EEPROM_CONFIGURATION_SIGNATURE_SIZE);
+		configuration.configurationState = SavedConfigurationState::providedSignatureAndBoardAddress;
+		configuration.boardAddress = BOARD_DEFAULT_ADDRESS;
+		// Write signature
+
+		if (writeToEEPROM(EEPROM_CONFIGURATION_SIGNATURE_ADDRESS, (uint8_t*)&configuration, sizeof(configuration)) != HAL_OK) {
+			Error_Handler();
+		}
+	}
+
+
+	switch (configuration.configurationState) {
+		case SavedConfigurationState::emptyEEPROM:
+			// Fatal, we should not be there
+			Error_Handler();
+			break;
+		case SavedConfigurationState::providedSignatureAndBoardAddress:
+			InitializeBoardAddress(configuration.boardAddress);
+			InitializeThermistors((ThermistorSavedConfiguration*)&configuration.thermistorConfiguration);
+			break;
+		case SavedConfigurationState::thermistorsConfigured:
+
+		break;
+		default:
+			Error_Handler();
+			break;
+	}
+
+	while(1) {
+		HAL_Delay(10);
+	}
+
+///WriteData = 0x11;
+
+//	HAL_I2C_Mem_Write(&hi2c1, EEPROM_DEVICE_ADDRESS, MemAddress, MemAddSize, &WriteData, Size, EEPROM_WRITE_READ_TIMEOUT);
+//	HAL_Delay(10);
+//	HAL_I2C_Mem_Read(&hi2c1, EEPROM_DEVICE_ADDRESS, MemAddress, MemAddSize, &ReadData, Size, EEPROM_WRITE_READ_TIMEOUT);
+
+}
+
+void InitializeThermistors(ThermistorSavedConfiguration* thermistorConfiguration) {
 	for (uint32_t i = 0; i < adcBufferLength; i++) {
 		volatile uint32_t *adcValue = &adcValues[i];
-		Thermistor* theremistor = new Thermistor(adcValue, pinNames[i]);
+		Thermistor* theremistor = new Thermistor(
+				adcValue,
+				pinNames[i],
+				thermistorConfiguration[i].thermistorResistanceAt25,
+				thermistorConfiguration[i].betaValue,
+				thermistorConfiguration[i].seriesResistorValue
+			);
+		if (thermistorConfiguration[i].sensorNumber < 64) {
+			theremistor->setSensorNumberValue(thermistorConfiguration[i].sensorNumber);
+		}
 		theremistors[i] = theremistor;
 	}
 }
@@ -1064,7 +1438,6 @@ void InitializeThermistors() {
   * @retval None
   */
 /* USER CODE END Header_StartDefaultTask */
-
 
 /**
   * @brief  Period elapsed callback in non blocking mode

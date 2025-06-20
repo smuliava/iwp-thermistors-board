@@ -19,6 +19,6 @@ C:\ST\STM32CubeIDE_1.18.0\STM32CubeIDE\plugins\com.st.stm32cube.ide.mcu.external
 ../Core/Src/SafeVsnprintf.cpp:809:5:)	24	static
 ../Core/Inc/function_ref.h:81:13:) const [with RetType = bool; Params = {char}]	24	static
 ../Core/Src/SafeVsnprintf.cpp:46:38:constexpr X max(X, X) [with X = int]	16	static
-../Core/Inc/function_ref.h:72:31:)> >::value)>::type*) [with Callable = SafeVsnprintf(char*, size_t, c_string, va_list)::<lambda(char)>&; RetType = bool; Params = {char}]	24	static
+../Core/Inc/function_ref.h:72:31:) noexcept> >::value)>::type*) [with Callable = SafeVsnprintf(char*, size_t, c_string, va_list)::<lambda(char)>&; RetType = bool; Params = {char}]	24	static
 C:\ST\STM32CubeIDE_1.18.0\STM32CubeIDE\plugins\com.st.stm32cube.ide.mcu.externaltools.gnu-tools-for-stm32.13.3.rel1.win32_1.0.0.202411081344\tools\bin/../lib/gcc/arm-none-eabi/13.3.1/../../../../arm-none-eabi/include/c++/13.3.1/bits/move.h:70:5:constexpr _Tp&& std::forward(typename remove_reference<_Functor>::type&) [with _Tp = char]	16	static
 ../Core/Inc/function_ref.h:66:45:) [with Callable = SafeVsnprintf(char*, size_t, c_string, va_list)::<lambda(char)>; RetType = bool; Params = {char}]	24	static
