@@ -49,7 +49,7 @@ using namespace std;
 #define PIN_NAME_LENGTH 5
 #define BOARD_DEFAULT_ADDRESS 88;
 #define EEPROM_DEVICE_ADDRESS 0b10101110
-#define EEPROM_WRITE_READ_TIMEOUT 10000
+#define EEPROM_WRITE_READ_TIMEOUT 20000
 #define EEPROM_MEM_SIZE 2
 #define EEPROM_STORAGE_STATE_SIZE sizeof(uint16_t)
 #define EEPROM_ADDRESS_SIZE sizeof(uint16_t)
@@ -102,8 +102,7 @@ struct ThermistorConfiguration {
 
 enum SavedConfigurationState {
 	emptyEEPROM,
-	providedSignatureAndBoardAddress,
-	thermistorsConfigured
+	providedSignatureAndBoardAddress
 };
 
 volatile uint32_t adcValues[] = {0, 0, 0, 0, 0, 0};
@@ -134,14 +133,6 @@ struct __attribute__((packed)) BoardConfiguration {
 	uint8_t boardSignature[EEPROM_CONFIGURATION_SIGNATURE_SIZE] = {0};
 	SavedConfigurationState configurationState = SavedConfigurationState::emptyEEPROM;
 	uint16_t boardAddress;
-	ThermistorSavedConfiguration thermistorConfiguration[6] = {
-		ThermistorSavedConfiguration(0),
-		ThermistorSavedConfiguration(1),
-		ThermistorSavedConfiguration(2),
-		ThermistorSavedConfiguration(3),
-		ThermistorSavedConfiguration(4),
-		ThermistorSavedConfiguration(5)
-	};
 
 	BoardConfiguration() {}
 };
@@ -259,7 +250,7 @@ void StartTemperatureSensorReadingTask(void *argument);
 void StartTemperatureSendingTask(void *argument);
 void StartInitializePeriferialTask(void *argument);
 void InitializeBoardAddress(uint32_t address);
-void InitializeThermistors(ThermistorSavedConfiguration* thermistorConfiguration);
+void InitializeThermistors();
 void InitializeConfiguration();
 
 /* USER CODE END PFP */
@@ -326,13 +317,7 @@ int main(void)
 
   HAL_ADC_Stop(&hadc1);
   HAL_ADCEx_Calibration_Start(&hadc1, ADC_SINGLE_ENDED);
-
-
-//  uint16_t vrefint_cal;                        // VREFINT calibration value
-//  vrefint_cal= *((uint16_t*)VREFINT_CAL_ADDR);
-
   HAL_ADC_Start_DMA(&hadc1, (uint32_t*)&adcValues, adcBufferLength);
-  FDCAN1_StartWithFilters();
 
   InitializeConfiguration();
 
@@ -1101,8 +1086,6 @@ GCodeResult ProcessM308(const CanMessageGeneric& msg, ThermistorConfiguration& c
 //		return rslt;
 //}
 
-int counter = 0;
-
 extern "C" {
 	int _write(int file, char *ptr, int len) {
 		HAL_StatusTypeDef hstatus;
@@ -1155,7 +1138,7 @@ extern "C" {
 				printHexArray(data->data, 60);
 			}
 
-			if (can.Dst() == boardAddress) {
+			if (can.Dst() == boardAddress && can.MsgType() == CanMessageType::m308New) {
 
 				counter++;
 				const string reply = "";
@@ -1243,11 +1226,11 @@ static void FDCAN1_StartWithFilters() {
 
 void StartTemperatureSensorReadingTask(void *argument)
 {
+	FDCAN1_StartWithFilters();
+
 	ThermistorConfiguration thermistorConfig;
     uint32_t currentSensorMeasurements = 0;
-
     const TickType_t xTicksToWait = pdMS_TO_TICKS(100);
-
 
   for(;;)
   {
@@ -1345,6 +1328,7 @@ HAL_StatusTypeDef readFromEEPROM(uint16_t address, uint8_t* buf, uint16_t length
 			length,
 			EEPROM_WRITE_READ_TIMEOUT
 		);
+	HAL_Delay(100);
 	return status;
 }
 
@@ -1358,27 +1342,36 @@ HAL_StatusTypeDef writeToEEPROM(uint16_t address, uint8_t* buf, uint16_t length)
 		  length,
 		  EEPROM_WRITE_READ_TIMEOUT
 	  );
-	HAL_Delay(100);
+	HAL_Delay(1000);
 
 	return status;
 }
 
 void InitializeConfiguration() {
-	// Read configuration Signature + 1 byte if EEPROM initialized
 	BoardConfiguration configuration;
-	if (readFromEEPROM(EEPROM_CONFIGURATION_SIGNATURE_ADDRESS, (uint8_t*)&configuration, sizeof(configuration)) != HAL_OK) {
+	const uint32_t configSize = sizeof(configuration);
+	if (readFromEEPROM(EEPROM_CONFIGURATION_SIGNATURE_ADDRESS, (uint8_t*)&configuration, configSize) != HAL_OK) {
 		Error_Handler();
 	}
 
 	if (memcmp(EEPROM_CONFIGURATION_SIGNATURE, &configuration.boardSignature, EEPROM_CONFIGURATION_SIGNATURE_SIZE) != 0) {
-		configuration = BoardConfiguration();
 		memcpy(&configuration.boardSignature, EEPROM_CONFIGURATION_SIGNATURE, EEPROM_CONFIGURATION_SIGNATURE_SIZE);
 		configuration.configurationState = SavedConfigurationState::providedSignatureAndBoardAddress;
 		configuration.boardAddress = BOARD_DEFAULT_ADDRESS;
 		// Write signature
 
-		if (writeToEEPROM(EEPROM_CONFIGURATION_SIGNATURE_ADDRESS, (uint8_t*)&configuration, sizeof(configuration)) != HAL_OK) {
-			Error_Handler();
+		uint32_t bytesLeftToWrite = configSize;
+		uint8_t data[configSize];
+		memcpy(data, &configuration, configSize);
+
+		for (uint32_t i = 0; i < configSize; i += 64) {
+			uint32_t bytesToWrite = bytesLeftToWrite > 64 ? 64 : bytesLeftToWrite;
+			bytesLeftToWrite -= 64;
+
+			uint16_t toAddress = EEPROM_CONFIGURATION_SIGNATURE_ADDRESS + i;
+			if (writeToEEPROM(toAddress, &data[i], bytesToWrite) != HAL_OK) {
+				Error_Handler();
+			}
 		}
 	}
 
@@ -1389,12 +1382,8 @@ void InitializeConfiguration() {
 			Error_Handler();
 			break;
 		case SavedConfigurationState::providedSignatureAndBoardAddress:
-			InitializeBoardAddress(configuration.boardAddress);
-			InitializeThermistors((ThermistorSavedConfiguration*)&configuration.thermistorConfiguration);
+ 			InitializeBoardAddress(configuration.boardAddress);
 			break;
-		case SavedConfigurationState::thermistorsConfigured:
-
-		break;
 		default:
 			Error_Handler();
 			break;
@@ -1412,19 +1401,13 @@ void InitializeConfiguration() {
 
 }
 
-void InitializeThermistors(ThermistorSavedConfiguration* thermistorConfiguration) {
+void InitializeThermistors() {
 	for (uint32_t i = 0; i < adcBufferLength; i++) {
 		volatile uint32_t *adcValue = &adcValues[i];
 		Thermistor* theremistor = new Thermistor(
 				adcValue,
-				pinNames[i],
-				thermistorConfiguration[i].thermistorResistanceAt25,
-				thermistorConfiguration[i].betaValue,
-				thermistorConfiguration[i].seriesResistorValue
+				pinNames[i]
 			);
-		if (thermistorConfiguration[i].sensorNumber < 64) {
-			theremistor->setSensorNumberValue(thermistorConfiguration[i].sensorNumber);
-		}
 		theremistors[i] = theremistor;
 	}
 }
