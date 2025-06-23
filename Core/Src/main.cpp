@@ -46,6 +46,7 @@ using namespace std;
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
+#define  F_CLK_TIM_INPUT 168000000UL
 #define PIN_NAME_LENGTH 5
 #define BOARD_DEFAULT_ADDRESS 88;
 #define EEPROM_DEVICE_ADDRESS 0b10101110
@@ -59,6 +60,16 @@ using namespace std;
 #define EEPROM_CONFIGURATION_SIGNATURE_SIZE sizeof(EEPROM_CONFIGURATION_SIGNATURE)
 #define EEPROM_CONFIGURATION_SIGNATURE_ADDRESS 0
 
+
+// Structure to hold calculated PWM parameters
+struct PwmConfig {
+    uint16_t prescaler; // PSC register value (actual divider is prescaler + 1)
+    uint16_t arr;       // ARR register value (period is arr + 1)
+    uint16_t ccr;       // CCR register value (pulse width)
+    bool success;       // True if a valid configuration was found
+    uint32_t actualFreq; // Calculated actual frequency
+    float actualDuty;    // Calculated actual duty cycle
+};
 
 struct TemperatureReadings {
 	uint32_t pinNumber;
@@ -175,6 +186,7 @@ FDCAN_HandleTypeDef hfdcan1;
 
 I2C_HandleTypeDef hi2c1;
 
+TIM_HandleTypeDef htim1;
 TIM_HandleTypeDef htim2;
 TIM_HandleTypeDef htim3;
 TIM_HandleTypeDef htim4;
@@ -238,6 +250,7 @@ static void MX_TIM8_Init(void);
 static void MX_TIM15_Init(void);
 static void MX_TIM16_Init(void);
 static void MX_TIM17_Init(void);
+static void MX_TIM1_Init(uint32_t prescaler, uint32_t arr, uint32_t ccr);
 void StartDefaultTask(void *argument);
 
 /* USER CODE BEGIN PFP */
@@ -248,6 +261,7 @@ void StartInitializePeriferialTask(void *argument);
 void InitializeBoardAddress(uint32_t address);
 void InitializeThermistors();
 void InitializeConfiguration();
+PwmConfig calculatePwmConfig(uint32_t pwmFreq, float dutyCyclePercent);
 
 /* USER CODE END PFP */
 
@@ -319,7 +333,13 @@ int main(void)
   HAL_ADCEx_Calibration_Start(&hadc1, ADC_SINGLE_ENDED);
   HAL_ADC_Start_DMA(&hadc1, (uint32_t*)&adcValues, adcBufferLength);
 
+  PwmConfig pwm1Cfg = calculatePwmConfig(12000, 86);
+  MX_TIM1_Init(pwm1Cfg.prescaler, pwm1Cfg.arr, pwm1Cfg.ccr);
+
   InitializeConfiguration();
+
+
+//  htim1.co
 
    /* USER CODE END 2 */
 
@@ -692,6 +712,81 @@ static void MX_I2C1_Init(void)
 }
 
 /**
+  * @brief TIM1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM1_Init(uint32_t prescaler, uint32_t arr, uint32_t ccr)
+{
+
+  /* USER CODE BEGIN TIM1_Init 0 */
+
+  /* USER CODE END TIM1_Init 0 */
+
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+  TIM_OC_InitTypeDef sConfigOC = {0};
+  TIM_BreakDeadTimeConfigTypeDef sBreakDeadTimeConfig = {0};
+
+  /* USER CODE BEGIN TIM1_Init 1 */
+
+  /* USER CODE END TIM1_Init 1 */
+  htim1.Instance = TIM1;
+  htim1.Init.Prescaler = prescaler; //0;
+  htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim1.Init.Period = arr; //65535;
+  htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim1.Init.RepetitionCounter = 0;
+  htim1.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_PWM_Init(&htim1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterOutputTrigger2 = TIM_TRGO2_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim1, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sConfigOC.OCMode = TIM_OCMODE_PWM1;
+  sConfigOC.Pulse = ccr; //0;
+  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
+  sConfigOC.OCNPolarity = TIM_OCNPOLARITY_HIGH;
+  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
+  sConfigOC.OCIdleState = TIM_OCIDLESTATE_RESET;
+  sConfigOC.OCNIdleState = TIM_OCNIDLESTATE_RESET;
+  if (HAL_TIM_PWM_ConfigChannel(&htim1, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sBreakDeadTimeConfig.OffStateRunMode = TIM_OSSR_DISABLE;
+  sBreakDeadTimeConfig.OffStateIDLEMode = TIM_OSSI_DISABLE;
+  sBreakDeadTimeConfig.LockLevel = TIM_LOCKLEVEL_OFF;
+  sBreakDeadTimeConfig.DeadTime = 0;
+  sBreakDeadTimeConfig.BreakState = TIM_BREAK_DISABLE;
+  sBreakDeadTimeConfig.BreakPolarity = TIM_BREAKPOLARITY_HIGH;
+  sBreakDeadTimeConfig.BreakFilter = 0;
+  sBreakDeadTimeConfig.BreakAFMode = TIM_BREAK_AFMODE_INPUT;
+  sBreakDeadTimeConfig.Break2State = TIM_BREAK2_DISABLE;
+  sBreakDeadTimeConfig.Break2Polarity = TIM_BREAK2POLARITY_HIGH;
+  sBreakDeadTimeConfig.Break2Filter = 0;
+  sBreakDeadTimeConfig.Break2AFMode = TIM_BREAK_AFMODE_INPUT;
+  sBreakDeadTimeConfig.AutomaticOutput = TIM_AUTOMATICOUTPUT_DISABLE;
+  if (HAL_TIMEx_ConfigBreakDeadTime(&htim1, &sBreakDeadTimeConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM1_Init 2 */
+
+  /* USER CODE END TIM1_Init 2 */
+  HAL_TIM_MspPostInit(&htim1);
+
+  HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
+  HAL_TIMEx_PWMN_Start(&htim1, TIM_CHANNEL_1);
+
+}
+
+/**
   * @brief TIM2 Initialization Function
   * @param None
   * @retval None
@@ -710,9 +805,9 @@ static void MX_TIM2_Init(void)
 
   /* USER CODE END TIM2_Init 1 */
   htim2.Instance = TIM2;
-  htim2.Init.Prescaler = 10;
+  htim2.Init.Prescaler = 0;
   htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim2.Init.Period = 4095;
+  htim2.Init.Period = 4294967295;
   htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_PWM_Init(&htim2) != HAL_OK)
@@ -1633,6 +1728,90 @@ void InitializeThermistors() {
 	}
 }
 
+// Function to calculate Prescaler, ARR, and CCR based on specific rules
+PwmConfig calculatePwmConfig(uint32_t pwmFreq, float dutyCyclePercent) {
+    PwmConfig config = {0, 0, 0, false, 0, 0.0f};
+
+//    // --- Input Validation ---
+//    if (dutyCyclePercent < 0.0f || dutyCyclePercent > 100.0f) {
+//        std::cerr << "Error: Duty cycle must be between 0 and 100." << std::endl;
+//        return config;
+//    }
+//    if (pwmFreq == 0) {
+//        std::cerr << "Error: PWM frequency cannot be zero." << std::endl;
+//        return config;
+//    }
+
+    // --- Determine Prescaler based on your rule ---
+    uint32_t prescalerVal; // This will be 0 or 1, which always fits in uint16_t
+    if (pwmFreq >= 3000) {
+        prescalerVal = 0; // Prescaler + 1 = 1 (No division)
+    } else if (pwmFreq >= 1300 && pwmFreq < 3000) { // desired_pwm_freq < 3000 Hz
+    	prescalerVal = 1; // Prescaler + 1 = 2 (Divide by 2)
+    } else if (pwmFreq >= 860 && pwmFreq < 1300) { // desired_pwm_freq < 3000 Hz
+    	prescalerVal = 2; // Prescaler + 1 = 2 (Divide by 2)
+    } else {
+    	// We want to achieve this F_PWM with a 16-bit ARR (max 65535).
+		// ARR = (F_CLK_TIM_INPUT / ((prescaler_val + 1) * F_PWM)) - 1
+		// We need (prescaler_val + 1) >= F_CLK_TIM_INPUT / (F_PWM * (ARR_max + 1))
+		// So, calculate the minimum required prescaler_plus_1
+		float minPrescalerPlus1Float = (1.0f * F_CLK_TIM_INPUT) / (pwmFreq * 65536.0f);
+
+		// Round up to the next integer to ensure ARR fits and frequency is not lower
+		prescalerVal = static_cast<uint32_t>(std::ceil(minPrescalerPlus1Float)) - 1;
+
+		// Ensure calculated prescaler does not exceed 16-bit limit
+//		if (prescaler_val > 65535) {
+//			std::cerr << "Error: Calculated prescaler (" << prescaler_val
+//					  << ") exceeds 16-bit limit. Cannot achieve desired frequency with 16-bit timer." << std::endl;
+//			config.success = false;
+//			return config;
+//		}
+    }
+
+    // --- Calculate ARR (Auto-Reload Register) ---
+    // (ARR + 1) = F_CLK_TIM_INPUT / ((prescalerVal + 1) * F_PWM)
+    // Note: Use 1.0f * F_CLK_TIM_INPUT to force float division early for better precision
+    float periodTotalTicksFloat = (1.0f * F_CLK_TIM_INPUT) / ((prescalerVal + 1) * pwmFreq);
+
+    // Check if the calculated period is too small (meaning desired_pwm_freq is too high)
+//    if (period_total_ticks_float < 1.0f) {
+//        std::cerr << "Error: Desired PWM frequency (" << pwmFreq
+//                  << " Hz) is too high for this clock and prescaler. Minimum ARR+1 is 1." << std::endl;
+//        return config;
+//    }
+
+    uint32_t calculatedArrTemp = static_cast<uint32_t>(std::round(periodTotalTicksFloat)) - 1;
+
+    // --- Check if ARR is within 16-bit limits (0 to 65535) ---
+//    if (calculated_arr_temp > 65535 || calculatedArrTemp == 0xFFFFFFFF) { // 0xFFFFFFFF for unsigned underflow
+//        std::cerr << "Error: Calculated ARR (" << calculatedArrTemp
+//                  << ") exceeds 16-bit limit or is too small (e.g., negative after conversion)." << std::endl;
+//        std::cerr << "Consider reducing PWM frequency. Max theoretical ARR is 65535." << std::endl;
+//        return config;
+//    }
+
+    // Store the valid calculated parameters
+    config.prescaler = static_cast<uint16_t>(prescalerVal);
+    config.arr = static_cast<uint16_t>(calculatedArrTemp);
+
+    // --- Calculate CCR (Capture/Compare Register) ---
+    // CCR = round((Desired Duty Cycle / 100.0) * (ARR + 1))
+    config.ccr = static_cast<uint16_t>(std::round((dutyCyclePercent / 100.0f) * (config.arr + 1)));
+
+    // Safety check: ensure CCR does not exceed ARR + 1 (for 100% duty cycle)
+    if (config.ccr > (config.arr + 1)) {
+        config.ccr = config.arr + 1;
+    }
+
+    // --- Calculate Actual Freq and Duty (for verification) ---
+    config.actualFreq = F_CLK_TIM_INPUT / ((config.prescaler + 1) * (config.arr + 1));
+    config.actualDuty = (static_cast<float>(config.ccr) / (config.arr + 1)) * 100.0f;
+
+    config.success = true;
+    return config;
+}
+
 /* USER CODE END 4 */
 
 /* USER CODE BEGIN Header_StartDefaultTask */
@@ -1645,7 +1824,7 @@ void InitializeThermistors() {
 
 /**
   * @brief  Period elapsed callback in non blocking mode
-  * @note   This function is called  when TIM1 interrupt took place, inside
+  * @note   This function is called  when TIM7 interrupt took place, inside
   * HAL_TIM_IRQHandler(). It makes a direct call to HAL_IncTick() to increment
   * a global variable "uwTick" used as application time base.
   * @param  htim : TIM handle
@@ -1656,7 +1835,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
   /* USER CODE BEGIN Callback 0 */
 
   /* USER CODE END Callback 0 */
-  if (htim->Instance == TIM1)
+  if (htim->Instance == TIM7)
   {
     HAL_IncTick();
   }
