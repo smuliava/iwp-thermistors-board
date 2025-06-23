@@ -78,25 +78,13 @@ struct TemperatureReadings {
 struct ThermistorConfiguration {
 	uint32_t sensorNumber;
 	string pinName; //[PIN_NAME_LENGTH + 1];
-	float thermistorResistanceAt25;
-	float betaValue;
-	float cCoefficient;
-	float seriesResistorValue;
-	bool isPFound;
-	bool isYFound;
-	bool isTFound;
-	bool isBFound;
-	bool isCFound;
-	bool isRFound;
+	float tParam;
+	float bParam;
+	float cParam;
+	float rParam;
 
 	ThermistorConfiguration() {
-		isPFound = false;
-		isYFound = false;
-		isTFound = false;
-		isBFound = false;
-		isCFound = false;
-		isRFound = false;
-		cCoefficient = 0;
+		cParam = 0;
 	}
 };
 
@@ -710,9 +698,9 @@ static void MX_TIM2_Init(void)
 
   /* USER CODE END TIM2_Init 1 */
   htim2.Instance = TIM2;
-  htim2.Init.Prescaler = 0;
+  htim2.Init.Prescaler = 10;
   htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim2.Init.Period = 4294967295;
+  htim2.Init.Period = 4095;
   htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_PWM_Init(&htim2) != HAL_OK)
@@ -1011,46 +999,36 @@ GCodeResult ProcessM308(const CanMessageGeneric& msg, ThermistorConfiguration& c
 
 			// ToDo: cut pin name to 5 symbols
 
+			bool isPFound = false;
 			if (parser.GetStringParam('P', config.pinName)) {
 
 				config.pinName[5] = 0;
+
 				for (uint32_t i = 0; i < adcBufferLength; i++) {
 					if (pinNames[i] == config.pinName) {
-						config.isPFound = true;
+						isPFound = true;
 						break;
 					}
 				}
-
-				if (!config.isPFound) {
-					return GCodeResult::error;
-				}
 			}
 
+			bool isYFound = false;
 			if (parser.GetStringParam('Y', sensorType)) {
 				if (sensorType == THERMISTOR_NAME) { // ToDo: provide case insensitive comparison
-					config.isYFound = true;
+					isYFound = true;
 
 				}
-				if (!config.isTFound) {
+				if (!isYFound) {
 					//return GCodeResult::error;
 				}
 			}
 
-			if (parser.GetFloatParam('T', config.thermistorResistanceAt25)) {
-				config.isTFound = true;
-			}
+			parser.GetFloatParam('T', config.tParam);
+			parser.GetFloatParam('B', config.bParam);
+			parser.GetFloatParam('C', config.cParam);
+			parser.GetFloatParam('R', config.rParam);
 
-			if (parser.GetFloatParam('B', config.betaValue)) {
-				config.isBFound = true;
-			}
 
-			if (parser.GetFloatParam('C', config.cCoefficient)) {
-				config.isCFound = true;
-			}
-
-			if (parser.GetFloatParam('R', config.seriesResistorValue)) {
-				config.isRFound = true;
-			}
 //			const auto sensor = FindSensor(sensorNum);
 //			if (sensor.IsNull())
 //			{
@@ -1140,7 +1118,6 @@ extern "C" {
 
 			if (can.Dst() == boardAddress && can.MsgType() == CanMessageType::m308New) {
 
-				counter++;
 				const string reply = "";
 				ThermistorConfiguration thermistorConfig;
 				GCodeResult parceResult = ProcessM308(*data, thermistorConfig, reply);
@@ -1155,11 +1132,7 @@ extern "C" {
 						can.IsRequest(),
 						can.IsResponse());
 
-				if (counter %2 == 0) {
-					printf("Second paccet \r\n");
-				}
-
-				if (true || counter %2 == 0) {
+				if (true) {
 					CanId can2;
 
 					can2.SetResponse(CanMessageType::standardReply, boardAddress, 0);
@@ -1239,9 +1212,9 @@ void StartTemperatureSensorReadingTask(void *argument)
 			  const uint32_t thermistorIndex = pinNamesMap[thermistorConfig.pinName];
 			  Thermistor* thermistor = theremistors[thermistorIndex];
 
-			  thermistor->setBettaParameterValue(thermistorConfig.betaValue);
-			  thermistor->setCCoefficientValue(thermistorConfig.cCoefficient);
-			  thermistor->setSeriesResistorValue(thermistorConfig.seriesResistorValue);
+			  thermistor->setBettaParameterValue(thermistorConfig.bParam);
+			  thermistor->setCCoefficientValue(thermistorConfig.cParam);
+			  thermistor->setSeriesResistorValue(thermistorConfig.rParam);
 
 			  thermistor->setSensorNumberValue(thermistorConfig.sensorNumber);
 		  }
