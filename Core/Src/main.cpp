@@ -321,13 +321,6 @@ int main(void)
   MX_FDCAN1_Init();
   MX_USART2_UART_Init();
   MX_I2C1_Init();
-  MX_TIM2_Init();
-  MX_TIM3_Init();
-  MX_TIM4_Init();
-  MX_TIM8_Init();
-  MX_TIM15_Init();
-  MX_TIM16_Init();
-  MX_TIM17_Init();
   MX_TIM6_Init();
   /* USER CODE BEGIN 2 */
 
