@@ -244,16 +244,7 @@ static void MX_ADC1_Init(void);
 static void MX_FDCAN1_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_I2C1_Init(void);
-static void MX_TIM2_Init(void);
-static void MX_TIM3_Init(void);
-static void MX_TIM4_Init(void);
-static void MX_TIM8_Init(void);
-static void MX_TIM15_Init(void);
-static void MX_TIM16_Init(void);
-static void MX_TIM17_Init(void);
 static void MX_TIM6_Init(void);
-static void MX_TIM1_Init(uint32_t prescaler, uint32_t arr, uint32_t ccr);
-void StartDefaultTask(void *argument);
 
 /* USER CODE BEGIN PFP */
 static void FDCAN1_StartWithFilters(void);
@@ -264,6 +255,14 @@ void InitializeBoardAddress(uint32_t address);
 void InitializeThermistors();
 void InitializeConfiguration();
 PwmConfig calculatePwmConfig(uint32_t pwmFreq, float dutyCyclePercent);
+static void MX_TIM1_Init(uint32_t prescaler, uint32_t arr, uint32_t ccr);
+static void MX_TIM2_Init(uint32_t prescaler, uint32_t arr, uint32_t ccr);
+static void MX_TIM3_Init(uint32_t prescaler, uint32_t arr, uint32_t ccr);
+static void MX_TIM4_Init(uint32_t prescaler, uint32_t arr, uint32_t ccr);
+static void MX_TIM8_Init(uint32_t prescaler, uint32_t arr, uint32_t ccr);
+static void MX_TIM15_Init(uint32_t prescaler, uint32_t arr, uint32_t ccr);
+static void MX_TIM16_Init(uint32_t prescaler, uint32_t arr, uint32_t ccr);
+static void MX_TIM17_Init(uint32_t prescaler, uint32_t arr, uint32_t ccr);
 
 /* USER CODE END PFP */
 
@@ -734,9 +733,9 @@ static void MX_TIM1_Init(uint32_t prescaler, uint32_t arr, uint32_t ccr)
 
   /* USER CODE END TIM1_Init 1 */
   htim1.Instance = TIM1;
-  htim1.Init.Prescaler = prescaler; //0;
+  htim1.Init.Prescaler = prescaler;
   htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim1.Init.Period = arr; //65535;
+  htim1.Init.Period = arr;
   htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim1.Init.RepetitionCounter = 0;
   htim1.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
@@ -752,7 +751,7 @@ static void MX_TIM1_Init(uint32_t prescaler, uint32_t arr, uint32_t ccr)
     Error_Handler();
   }
   sConfigOC.OCMode = TIM_OCMODE_PWM1;
-  sConfigOC.Pulse = ccr; //0;
+  sConfigOC.Pulse = ccr;
   sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
   sConfigOC.OCNPolarity = TIM_OCNPOLARITY_HIGH;
   sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
@@ -794,7 +793,7 @@ static void MX_TIM1_Init(uint32_t prescaler, uint32_t arr, uint32_t ccr)
   * @param None
   * @retval None
   */
-static void MX_TIM2_Init(void)
+static void MX_TIM2_Init(uint32_t prescaler, uint32_t arr, uint32_t ccr)
 {
 
   /* USER CODE BEGIN TIM2_Init 0 */
@@ -808,9 +807,9 @@ static void MX_TIM2_Init(void)
 
   /* USER CODE END TIM2_Init 1 */
   htim2.Instance = TIM2;
-  htim2.Init.Prescaler = 0;
+  htim2.Init.Prescaler = prescaler;
   htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim2.Init.Period = 4294967295;
+  htim2.Init.Period = arr;
   htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
   if (HAL_TIM_PWM_Init(&htim2) != HAL_OK)
@@ -824,7 +823,7 @@ static void MX_TIM2_Init(void)
     Error_Handler();
   }
   sConfigOC.OCMode = TIM_OCMODE_PWM1;
-  sConfigOC.Pulse = 0;
+  sConfigOC.Pulse = ccr;
   sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
   sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
   if (HAL_TIM_PWM_ConfigChannel(&htim2, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
@@ -843,7 +842,7 @@ static void MX_TIM2_Init(void)
   * @param None
   * @retval None
   */
-static void MX_TIM3_Init(void)
+static void MX_TIM3_Init(uint32_t prescaler, uint32_t arr, uint32_t ccr)
 {
 
   /* USER CODE BEGIN TIM3_Init 0 */
@@ -857,9 +856,9 @@ static void MX_TIM3_Init(void)
 
   /* USER CODE END TIM3_Init 1 */
   htim3.Instance = TIM3;
-  htim3.Init.Prescaler = 0;
+  htim3.Init.Prescaler = prescaler;
   htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim3.Init.Period = 65535;
+  htim3.Init.Period = arr;
   htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
   if (HAL_TIM_PWM_Init(&htim3) != HAL_OK)
@@ -873,7 +872,7 @@ static void MX_TIM3_Init(void)
     Error_Handler();
   }
   sConfigOC.OCMode = TIM_OCMODE_PWM1;
-  sConfigOC.Pulse = 0;
+  sConfigOC.Pulse = ccr;
   sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
   sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
   if (HAL_TIM_PWM_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
@@ -892,7 +891,7 @@ static void MX_TIM3_Init(void)
   * @param None
   * @retval None
   */
-static void MX_TIM4_Init(void)
+static void MX_TIM4_Init(uint32_t prescaler, uint32_t arr, uint32_t ccr)
 {
 
   /* USER CODE BEGIN TIM4_Init 0 */
@@ -906,9 +905,9 @@ static void MX_TIM4_Init(void)
 
   /* USER CODE END TIM4_Init 1 */
   htim4.Instance = TIM4;
-  htim4.Init.Prescaler = 0;
+  htim4.Init.Prescaler = prescaler;
   htim4.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim4.Init.Period = 65535;
+  htim4.Init.Period = arr;
   htim4.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim4.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
   if (HAL_TIM_PWM_Init(&htim4) != HAL_OK)
@@ -922,7 +921,7 @@ static void MX_TIM4_Init(void)
     Error_Handler();
   }
   sConfigOC.OCMode = TIM_OCMODE_PWM1;
-  sConfigOC.Pulse = 0;
+  sConfigOC.Pulse = ccr;
   sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
   sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
   if (HAL_TIM_PWM_ConfigChannel(&htim4, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
@@ -979,7 +978,7 @@ static void MX_TIM6_Init(void)
   * @param None
   * @retval None
   */
-static void MX_TIM8_Init(void)
+static void MX_TIM8_Init(uint32_t prescaler, uint32_t arr, uint32_t ccr)
 {
 
   /* USER CODE BEGIN TIM8_Init 0 */
@@ -994,9 +993,9 @@ static void MX_TIM8_Init(void)
 
   /* USER CODE END TIM8_Init 1 */
   htim8.Instance = TIM8;
-  htim8.Init.Prescaler = 0;
+  htim8.Init.Prescaler = prescaler;
   htim8.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim8.Init.Period = 65535;
+  htim8.Init.Period = arr;
   htim8.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim8.Init.RepetitionCounter = 0;
   htim8.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
@@ -1012,7 +1011,7 @@ static void MX_TIM8_Init(void)
     Error_Handler();
   }
   sConfigOC.OCMode = TIM_OCMODE_PWM1;
-  sConfigOC.Pulse = 0;
+  sConfigOC.Pulse = ccr;
   sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
   sConfigOC.OCNPolarity = TIM_OCNPOLARITY_HIGH;
   sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
@@ -1051,7 +1050,7 @@ static void MX_TIM8_Init(void)
   * @param None
   * @retval None
   */
-static void MX_TIM15_Init(void)
+static void MX_TIM15_Init(uint32_t prescaler, uint32_t arr, uint32_t ccr)
 {
 
   /* USER CODE BEGIN TIM15_Init 0 */
@@ -1066,9 +1065,9 @@ static void MX_TIM15_Init(void)
 
   /* USER CODE END TIM15_Init 1 */
   htim15.Instance = TIM15;
-  htim15.Init.Prescaler = 0;
+  htim15.Init.Prescaler = prescaler;
   htim15.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim15.Init.Period = 65535;
+  htim15.Init.Period = aar;
   htim15.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim15.Init.RepetitionCounter = 0;
   htim15.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
@@ -1083,7 +1082,7 @@ static void MX_TIM15_Init(void)
     Error_Handler();
   }
   sConfigOC.OCMode = TIM_OCMODE_PWM1;
-  sConfigOC.Pulse = 0;
+  sConfigOC.Pulse = ccr;
   sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
   sConfigOC.OCNPolarity = TIM_OCNPOLARITY_HIGH;
   sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
@@ -1117,7 +1116,7 @@ static void MX_TIM15_Init(void)
   * @param None
   * @retval None
   */
-static void MX_TIM16_Init(void)
+static void MX_TIM16_Init(uint32_t prescaler, uint32_t arr, uint32_t ccr)
 {
 
   /* USER CODE BEGIN TIM16_Init 0 */
@@ -1131,9 +1130,9 @@ static void MX_TIM16_Init(void)
 
   /* USER CODE END TIM16_Init 1 */
   htim16.Instance = TIM16;
-  htim16.Init.Prescaler = 0;
+  htim16.Init.Prescaler = prescaler;
   htim16.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim16.Init.Period = 65535;
+  htim16.Init.Period = arr;
   htim16.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim16.Init.RepetitionCounter = 0;
   htim16.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
@@ -1146,7 +1145,7 @@ static void MX_TIM16_Init(void)
     Error_Handler();
   }
   sConfigOC.OCMode = TIM_OCMODE_PWM1;
-  sConfigOC.Pulse = 0;
+  sConfigOC.Pulse = ccr;
   sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
   sConfigOC.OCNPolarity = TIM_OCNPOLARITY_HIGH;
   sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
@@ -1180,7 +1179,7 @@ static void MX_TIM16_Init(void)
   * @param None
   * @retval None
   */
-static void MX_TIM17_Init(void)
+static void MX_TIM17_Init(uint32_t prescaler, uint32_t arr, uint32_t ccr)
 {
 
   /* USER CODE BEGIN TIM17_Init 0 */
@@ -1194,9 +1193,9 @@ static void MX_TIM17_Init(void)
 
   /* USER CODE END TIM17_Init 1 */
   htim17.Instance = TIM17;
-  htim17.Init.Prescaler = 0;
+  htim17.Init.Prescaler = prescaler;
   htim17.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim17.Init.Period = 65535;
+  htim17.Init.Period = arr;
   htim17.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim17.Init.RepetitionCounter = 0;
   htim17.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
@@ -1209,7 +1208,7 @@ static void MX_TIM17_Init(void)
     Error_Handler();
   }
   sConfigOC.OCMode = TIM_OCMODE_PWM1;
-  sConfigOC.Pulse = 0;
+  sConfigOC.Pulse = ccr;
   sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
   sConfigOC.OCNPolarity = TIM_OCNPOLARITY_HIGH;
   sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
