@@ -59,6 +59,30 @@ void Error_Handler(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
+#define TACH01_Pin GPIO_PIN_4
+#define TACH01_GPIO_Port GPIOC
+#define TACH01_EXTI_IRQn EXTI4_IRQn
+#define TACH00_Pin GPIO_PIN_0
+#define TACH00_GPIO_Port GPIOB
+#define TACH00_EXTI_IRQn EXTI0_IRQn
+#define TACH07_Pin GPIO_PIN_13
+#define TACH07_GPIO_Port GPIOB
+#define TACH07_EXTI_IRQn EXTI15_10_IRQn
+#define TACH03_Pin GPIO_PIN_9
+#define TACH03_GPIO_Port GPIOA
+#define TACH03_EXTI_IRQn EXTI9_5_IRQn
+#define TACH06_Pin GPIO_PIN_12
+#define TACH06_GPIO_Port GPIOA
+#define TACH06_EXTI_IRQn EXTI15_10_IRQn
+#define TACH04_Pin GPIO_PIN_10
+#define TACH04_GPIO_Port GPIOC
+#define TACH04_EXTI_IRQn EXTI15_10_IRQn
+#define TACH05_Pin GPIO_PIN_11
+#define TACH05_GPIO_Port GPIOC
+#define TACH05_EXTI_IRQn EXTI15_10_IRQn
+#define TACH02_Pin GPIO_PIN_5
+#define TACH02_GPIO_Port GPIOB
+#define TACH02_EXTI_IRQn EXTI9_5_IRQn
 
 /* USER CODE BEGIN Private defines */
 
