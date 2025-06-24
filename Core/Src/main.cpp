@@ -106,6 +106,7 @@ enum SavedConfigurationState {
 
 volatile uint32_t adcValues[] = {0, 0, 0, 0, 0, 0};
 const uint32_t adcBufferLength = sizeof(adcValues) / sizeof(adcValues[0]);
+uint32_t secondsTicks = 0;
 
 const string pinNames[adcBufferLength] = {
 		"temp0",
@@ -330,6 +331,10 @@ int main(void)
 
   PwmConfig pwm1Cfg = calculatePwmConfig(12000, 86);
   MX_TIM1_Init(pwm1Cfg.prescaler, pwm1Cfg.arr, pwm1Cfg.ccr);
+  HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
+  HAL_TIMEx_PWMN_Start(&htim1, TIM_CHANNEL_1);
+
+  HAL_TIM_Base_Start_IT(&htim6);
 
   InitializeConfiguration();
 
@@ -775,10 +780,6 @@ static void MX_TIM1_Init(uint32_t prescaler, uint32_t arr, uint32_t ccr)
 
   /* USER CODE END TIM1_Init 2 */
   HAL_TIM_MspPostInit(&htim1);
-
-  HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
-  HAL_TIMEx_PWMN_Start(&htim1, TIM_CHANNEL_1);
-
 }
 
 /**
@@ -1473,6 +1474,11 @@ GCodeResult ProcessM308(const CanMessageGeneric& msg, ThermistorConfiguration& c
 //}
 
 extern "C" {
+
+	void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
+
+	}
+
 	int _write(int file, char *ptr, int len) {
 		HAL_StatusTypeDef hstatus;
 
@@ -1877,6 +1883,15 @@ PwmConfig calculatePwmConfig(uint32_t pwmFreq, float dutyCyclePercent) {
     return config;
 }
 
+void OnSecondTick(void) {
+	secondsTicks++;
+}
+
+void OnTacho(uint32_t channel) {
+
+}
+
+
 /* USER CODE END 4 */
 
 /* USER CODE BEGIN Header_StartDefaultTask */
@@ -1905,6 +1920,9 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
     HAL_IncTick();
   }
   /* USER CODE BEGIN Callback 1 */
+	if (htim->Instance == TIM6)	{
+		OnSecondTick();
+	}
 
   /* USER CODE END Callback 1 */
 }
