@@ -22,8 +22,8 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include <stdio.h>
-#include <errno.h>
+#include <cstdio>
+#include <cerrno>
 #include <sys/unistd.h>
 
 #include <cstdint>
@@ -34,12 +34,13 @@
 #include "queue.h"
 #include "semphr.h"
 
-#include <tgmath.h>
-#include <Thermistor.h>
+#include <ctgmath>
+#include "Sensors/Thermistor.h"
 #include <CanId.h>
 #include <CanMessageGenericParser.h>
 #include <String.h>
 #include <string.h>
+
 using namespace std;
 
 /* USER CODE END Includes */
@@ -50,7 +51,7 @@ using namespace std;
 #define PIN_NAME_LENGTH 5
 #define BOARD_DEFAULT_ADDRESS 88;
 #define EEPROM_DEVICE_ADDRESS 0b10101110
-#define EEPROM_WRITE_READ_TIMEOUT 20000
+#define EEPROM_WRITE_READ_TIMEOUT 1000
 #define EEPROM_MEM_SIZE 2
 #define EEPROM_STORAGE_STATE_SIZE sizeof(uint16_t)
 #define EEPROM_ADDRESS_SIZE sizeof(uint16_t)
@@ -72,13 +73,13 @@ struct PwmConfig {
 };
 
 struct TemperatureReadings {
-	uint32_t pinNumber;
-	uint32_t sensorNumber;
-	double temperature;
+	uint32_t pinNumber{};
+	uint32_t sensorNumber{};
+	double temperature{};
 	bool hasError;
-	bool hasReadings;
+	bool hasReadings{};
 
-	TemperatureReadings(uint32_t pinNumber, uint32_t sensorNumber, double temperature, bool hasError)
+	TemperatureReadings(const uint32_t pinNumber, const uint32_t sensorNumber, const double temperature, bool)
 		: pinNumber(pinNumber), sensorNumber(sensorNumber), temperature(temperature), hasError(false) {};
 	TemperatureReadings() {
 		hasError = false;
@@ -87,12 +88,12 @@ struct TemperatureReadings {
 };
 
 struct ThermistorConfiguration {
-	uint32_t sensorNumber;
-	string pinName; //[PIN_NAME_LENGTH + 1];
-	float tParam;
-	float bParam;
+	uint32_t sensorNumber{};
+	string pinName;
+	float tParam{};
+	float bParam{};
 	float cParam;
-	float rParam;
+	float rParam{};
 
 	ThermistorConfiguration() {
 		cParam = 0;
@@ -105,7 +106,7 @@ enum SavedConfigurationState {
 };
 
 volatile uint32_t adcValues[] = {0, 0, 0, 0, 0, 0};
-const uint32_t adcBufferLength = sizeof(adcValues) / sizeof(adcValues[0]);
+constexpr uint32_t adcBufferLength = size(adcValues);
 uint32_t secondsTicks = 0;
 
 const string pinNames[adcBufferLength] = {
@@ -124,7 +125,7 @@ struct  __attribute__((packed)) ThermistorSavedConfiguration {
 	float cCoefficient = 0;
 	float seriesResistorValue = R_BALANCE_DEFAULT;
 
-	ThermistorSavedConfiguration(uint32_t sensorNumber): sensorNumber(sensorNumber) {};
+	explicit ThermistorSavedConfiguration(const uint32_t sensorNumber): sensorNumber(sensorNumber) {};
 };
 
 
@@ -134,7 +135,10 @@ struct __attribute__((packed)) BoardConfiguration {
 	SavedConfigurationState configurationState = SavedConfigurationState::emptyEEPROM;
 	uint16_t boardAddress;
 
-	BoardConfiguration() {}
+	BoardConfiguration() {
+		boardAddress = BOARD_DEFAULT_ADDRESS;
+		configurationState = SavedConfigurationState::emptyEEPROM;
+	}
 };
 
 enum TemperatureError {
@@ -168,7 +172,7 @@ enum TemperatureError {
 #define MAX_REDUCED_STRING_LENGTH 21
 #define MAX_STRING_LENGTH 60
 #define TEMPERATURE_READINGS_QUEUE_LENGTH(itemsPerSensor) 6 * itemsPerSensor
-#define INITIALIZE_PERIFERIAL_QUEUE_LENGTH 4
+#define INITIALIZE_PERIPHERAL_QUEUE_LENGTH 4
 #define THERMISTOR_NAME "thermistor"
 
 
@@ -205,13 +209,13 @@ Thermistor* theremistors[adcBufferLength];
 
 /* USER CODE BEGIN PV */
 osThreadId_t sensorConfigurationHTaskHandler;
-TaskHandle_t initializePeriferialTaskHendler;
-const osThreadAttr_t temperatureSensorReadingTask_attributes = {
+TaskHandle_t initializePeripheralTaskHandler;
+constexpr osThreadAttr_t temperatureSensorReadingTask_attributes = {
   .name = "TemperatureSensorReading",
   .stack_size = 128 * 4
 };
 
-const osThreadAttr_t temperatureSensorSendingTask_attributes = {
+constexpr osThreadAttr_t temperatureSensorSendingTask_attributes = {
   .name = "TemperatureSensorSending",
   .stack_size = 128 * 8
 };
@@ -222,10 +226,6 @@ uint8_t RxData[120];
 
 QueueHandle_t xInitializePeriferialQueue;
 
-uint32_t boardAddress;
-
-
-
 map<string, uint32_t> pinNamesMap = {
 		{pinNames[0], 0},
 		{pinNames[1], 1},
@@ -235,24 +235,26 @@ map<string, uint32_t> pinNamesMap = {
 		{pinNames[5], 5}
 };
 
+BoardConfiguration configuration;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
-void SystemClock_Config(void);
-static void MX_GPIO_Init(void);
-static void MX_DMA_Init(void);
-static void MX_ADC1_Init(void);
-static void MX_FDCAN1_Init(void);
-static void MX_USART2_UART_Init(void);
-static void MX_I2C1_Init(void);
-static void MX_TIM6_Init(void);
+void SystemClock_Config();
+static void MX_GPIO_Init();
+static void MX_DMA_Init();
+static void MX_ADC1_Init();
+static void MX_FDCAN1_Init();
+static void MX_USART2_UART_Init();
+static void MX_I2C1_Init();
+static void MX_TIM6_Init();
 
 /* USER CODE BEGIN PFP */
-static void FDCAN1_StartWithFilters(void);
-void StartTemperatureSensorReadingTask(void *argument);
-void StartTemperatureSendingTask(void *argument);
-void StartInitializePeriferialTask(void *argument);
-void InitializeBoardAddress(uint32_t address);
+static void FDCAN1_StartWithFilters();
+[[noreturn]] void StartTemperatureSensorReadingTask(void *argument);
+[[noreturn]] void StartTemperatureSendingTask(void *argument);
+[[noreturn]] void StartInitializePeripheralTask(void *argument);
+uint32_t GetBoardAddress();
 void InitializeThermistors();
 void InitializeConfiguration();
 PwmConfig calculatePwmConfig(uint32_t pwmFreq, float dutyCyclePercent);
@@ -329,13 +331,14 @@ int main(void)
   HAL_ADCEx_Calibration_Start(&hadc1, ADC_SINGLE_ENDED);
   HAL_ADC_Start_DMA(&hadc1, (uint32_t*)&adcValues, adcBufferLength);
 
-  PwmConfig pwm1Cfg = calculatePwmConfig(12000, 86);
+  PwmConfig pwm1Cfg = calculatePwmConfig(25000, 20);
   MX_TIM1_Init(pwm1Cfg.prescaler, pwm1Cfg.arr, pwm1Cfg.ccr);
   HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
   HAL_TIMEx_PWMN_Start(&htim1, TIM_CHANNEL_1);
 
   HAL_TIM_Base_Start_IT(&htim6);
 
+	HAL_Delay(1000);
   InitializeConfiguration();
 
 
@@ -361,7 +364,7 @@ int main(void)
 
   /* USER CODE BEGIN RTOS_QUEUES */
 
-  xInitializePeriferialQueue = xQueueCreate(INITIALIZE_PERIFERIAL_QUEUE_LENGTH, sizeof(ThermistorConfiguration));
+  xInitializePeriferialQueue = xQueueCreate(INITIALIZE_PERIPHERAL_QUEUE_LENGTH, sizeof(ThermistorConfiguration));
 
 
   /* USER CODE END RTOS_QUEUES */
@@ -398,7 +401,7 @@ int main(void)
 	  tempRep.temperatureReports[0].SetTemperature(22.642);
 	  CanId canTemp;
 
-	  canTemp.SetRequest(CanMessageType::sensorTemperaturesReport, boardAddress, CanId::BroadcastAddress);
+	  canTemp.SetRequest(CanMessageType::sensorTemperaturesReport, GetBoardAddress(), CanId::BroadcastAddress);
 
 		TxHeader.Identifier = canTemp.GetWholeId();
 		TxHeader.IdType = FDCAN_EXTENDED_ID;
@@ -679,7 +682,7 @@ static void MX_I2C1_Init(void)
 
   /* USER CODE END I2C1_Init 1 */
   hi2c1.Instance = I2C1;
-  hi2c1.Init.Timing = 0x20B21E5A;
+  hi2c1.Init.Timing = 0x50916E9F; //0x20B21E5A;
   hi2c1.Init.OwnAddress1 = 0;
   hi2c1.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
   hi2c1.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
@@ -1404,7 +1407,6 @@ GCodeResult ProcessM308(const CanMessageGeneric& msg, ThermistorConfiguration& c
 		if (config.sensorNumber < T_SENSORS_COUNT)
 		{
 			//char sensorPinName[MAX_REDUCED_STRING_LENGTH] = {0};
-			string sensorType;
 
 			// ToDo: cut pin name to 5 symbols
 
@@ -1413,16 +1415,16 @@ GCodeResult ProcessM308(const CanMessageGeneric& msg, ThermistorConfiguration& c
 
 				config.pinName[5] = 0;
 
-				for (uint32_t i = 0; i < adcBufferLength; i++) {
-					if (pinNames[i] == config.pinName) {
+				for (const auto & pinName : pinNames) {
+					if (pinName == config.pinName) {
 						isPFound = true;
 						break;
 					}
 				}
 			}
 
-			bool isYFound = false;
-			if (parser.GetStringParam('Y', sensorType)) {
+			if (string sensorType; parser.GetStringParam('Y', sensorType)) {
+				bool isYFound = false;
 				if (sensorType == THERMISTOR_NAME) { // ToDo: provide case insensitive comparison
 					isYFound = true;
 
@@ -1480,14 +1482,12 @@ extern "C" {
 	}
 
 	int _write(int file, char *ptr, int len) {
-		HAL_StatusTypeDef hstatus;
-
 		if (file != STDOUT_FILENO && file != STDERR_FILENO) {
 			errno = EBADF;
 			return -1;
 		}
 
-		hstatus = HAL_UART_Transmit(&huart2, (uint8_t *)ptr, len, HAL_MAX_DELAY);
+		HAL_StatusTypeDef hstatus = HAL_UART_Transmit(&huart2, reinterpret_cast<uint8_t*>(ptr), len, HAL_MAX_DELAY);
 		if (hstatus == HAL_OK) {
 			return len;
 		} else {
@@ -1505,8 +1505,8 @@ extern "C" {
 				Error_Handler();
 			}
 
-			CanMessageGeneric* data = reinterpret_cast<CanMessageGeneric*>(&RxData);
-			CanId can;
+			auto* data = reinterpret_cast<CanMessageGeneric*>(&RxData);
+			CanId can{};
 			can.SetReceivedId(RxHeader.Identifier);
 
 			if (false && can.MsgType() == CanMessageType::timeSync) {
@@ -1530,9 +1530,9 @@ extern "C" {
 				printHexArray(data->data, 60);
 			}
 
-			if (can.Dst() == boardAddress && can.MsgType() == CanMessageType::m308New) {
+			if (can.Dst() == GetBoardAddress() && can.MsgType() == CanMessageType::m308New) {
 
-				const string reply = "";
+				const string reply;
 				ThermistorConfiguration thermistorConfig;
 				GCodeResult parceResult = ProcessM308(*data, thermistorConfig, reply);
 
@@ -1549,7 +1549,7 @@ extern "C" {
 				if (true) {
 					CanId can2;
 
-					can2.SetResponse(CanMessageType::standardReply, boardAddress, 0);
+					can2.SetResponse(CanMessageType::standardReply, GetBoardAddress(), 0);
 
 					TxHeader.Identifier = can2.GetWholeId();
 					TxHeader.IdType = FDCAN_EXTENDED_ID;
@@ -1611,13 +1611,13 @@ static void FDCAN1_StartWithFilters() {
 	HAL_NVIC_EnableIRQ(FDCAN1_IT0_IRQn);
 }
 
-void StartTemperatureSensorReadingTask(void *argument)
+[[noreturn]] void StartTemperatureSensorReadingTask(void *argument)
 {
 	FDCAN1_StartWithFilters();
 
 	ThermistorConfiguration thermistorConfig;
-    uint32_t currentSensorMeasurements = 0;
-    const TickType_t xTicksToWait = pdMS_TO_TICKS(100);
+  uint32_t currentSensorMeasurements = 0;
+	constexpr TickType_t xTicksToWait = pdMS_TO_TICKS(100);
 
   for(;;)
   {
@@ -1635,8 +1635,7 @@ void StartTemperatureSensorReadingTask(void *argument)
 	  }
 
 
-	  Thermistor* thermistor = (Thermistor*)theremistors[currentSensorMeasurements];
-	  if (thermistor->isInitialized) {
+	  if (auto* thermistor = (Thermistor*)theremistors[currentSensorMeasurements]; thermistor->isInitialized) {
 		  thermistor->updateTemperature();
 	  }
 
@@ -1650,7 +1649,7 @@ void StartTemperatureSensorReadingTask(void *argument)
   /* USER CODE END 5 */
 }
 
-void StartTemperatureSendingTask(void *argument)
+[[noreturn]] void StartTemperatureSendingTask(void *argument)
 {
 	FDCAN_TxHeaderTypeDef txBroadcastHeader;
 
@@ -1665,18 +1664,18 @@ void StartTemperatureSendingTask(void *argument)
   for(;;) {
 
 
-	  CanMessageSensorTemperatures tempBroadcast;
+	  CanMessageSensorTemperatures tempBroadcast{};
 	  tempBroadcast.whichSensors = 0;
 
 	  uint32_t initializedSensorsCount = 0;
-	  for (uint32_t i = 0; i < adcBufferLength; i++) {
-		  if (!theremistors[i]->isInitialized) {
+	  for (auto & thermistorPtr : theremistors) {
+		  if (!thermistorPtr->isInitialized) {
 			  continue;
 		  }
 
-		  const uint8_t semsorNumber = theremistors[i]->getSensorNumberValue();
-		  const float temperature = (float)theremistors[i]->getLastKnownTemperatureC();
-		  tempBroadcast.whichSensors |= (uint64_t)1u << semsorNumber;
+		  const uint8_t sensorNumber = thermistorPtr->getSensorNumberValue();
+		  const auto temperature = static_cast<float>(thermistorPtr->getLastKnownTemperatureC());
+		  tempBroadcast.whichSensors |= static_cast<uint64_t>(1u) << sensorNumber;
 		  tempBroadcast.temperatureReports[initializedSensorsCount].SetTemperature(temperature);
 		  tempBroadcast.temperatureReports[initializedSensorsCount].errorCode = TemperatureError::ok;
 
@@ -1685,7 +1684,7 @@ void StartTemperatureSendingTask(void *argument)
 
 	  if (initializedSensorsCount > 0) {
 		  CanId canId;
-		  canId.SetRequest(CanMessageType::sensorTemperaturesReport, boardAddress, CanId::BroadcastAddress);
+		  canId.SetRequest(CanMessageType::sensorTemperaturesReport, GetBoardAddress(), CanId::BroadcastAddress);
 
 
 		  txBroadcastHeader.Identifier = canId.GetWholeId();
@@ -1701,12 +1700,12 @@ void StartTemperatureSendingTask(void *argument)
 
 }
 
-void InitializeBoardAddress(uint32_t address) {
-	boardAddress = address;
+uint32_t GetBoardAddress() {
+	return configuration.boardAddress;
 }
 
-HAL_StatusTypeDef readFromEEPROM(uint16_t address, uint8_t* buf, uint16_t length) {
-	HAL_StatusTypeDef status = HAL_I2C_Mem_Read(
+HAL_StatusTypeDef readFromEEPROM(const uint16_t address, uint8_t* buf, const uint16_t length) {
+	const HAL_StatusTypeDef status = HAL_I2C_Mem_Read(
 			&hi2c1,
 			EEPROM_DEVICE_ADDRESS,
 			address,
@@ -1715,12 +1714,11 @@ HAL_StatusTypeDef readFromEEPROM(uint16_t address, uint8_t* buf, uint16_t length
 			length,
 			EEPROM_WRITE_READ_TIMEOUT
 		);
-	HAL_Delay(100);
 	return status;
 }
 
-HAL_StatusTypeDef writeToEEPROM(uint16_t address, uint8_t* buf, uint16_t length) {
-	HAL_StatusTypeDef status = HAL_I2C_Mem_Write(
+HAL_StatusTypeDef writeToEEPROM(const uint16_t address, uint8_t* buf, const uint16_t length) {
+	const HAL_StatusTypeDef status = HAL_I2C_Mem_Write(
 		  &hi2c1,
 		  EEPROM_DEVICE_ADDRESS,
 		  address,
@@ -1729,15 +1727,14 @@ HAL_StatusTypeDef writeToEEPROM(uint16_t address, uint8_t* buf, uint16_t length)
 		  length,
 		  EEPROM_WRITE_READ_TIMEOUT
 	  );
-	HAL_Delay(1000);
+	HAL_Delay(100);
 
 	return status;
 }
 
 void InitializeConfiguration() {
-	BoardConfiguration configuration;
-	const uint32_t configSize = sizeof(configuration);
-	if (readFromEEPROM(EEPROM_CONFIGURATION_SIGNATURE_ADDRESS, (uint8_t*)&configuration, configSize) != HAL_OK) {
+	constexpr uint32_t configSize = sizeof(configuration);
+	if (readFromEEPROM(EEPROM_CONFIGURATION_SIGNATURE_ADDRESS, reinterpret_cast<uint8_t*>(&configuration), configSize) != HAL_OK) {
 		Error_Handler();
 	}
 
@@ -1745,7 +1742,6 @@ void InitializeConfiguration() {
 		memcpy(&configuration.boardSignature, EEPROM_CONFIGURATION_SIGNATURE, EEPROM_CONFIGURATION_SIGNATURE_SIZE);
 		configuration.configurationState = SavedConfigurationState::providedSignatureAndBoardAddress;
 		configuration.boardAddress = BOARD_DEFAULT_ADDRESS;
-		// Write signature
 
 		uint32_t bytesLeftToWrite = configSize;
 		uint8_t data[configSize];
@@ -1755,8 +1751,7 @@ void InitializeConfiguration() {
 			uint32_t bytesToWrite = bytesLeftToWrite > 64 ? 64 : bytesLeftToWrite;
 			bytesLeftToWrite -= 64;
 
-			uint16_t toAddress = EEPROM_CONFIGURATION_SIGNATURE_ADDRESS + i;
-			if (writeToEEPROM(toAddress, &data[i], bytesToWrite) != HAL_OK) {
+			if (const uint16_t toAddress = EEPROM_CONFIGURATION_SIGNATURE_ADDRESS + i; writeToEEPROM(toAddress, &data[i], bytesToWrite) != HAL_OK) {
 				Error_Handler();
 			}
 		}
@@ -1769,23 +1764,11 @@ void InitializeConfiguration() {
 			Error_Handler();
 			break;
 		case SavedConfigurationState::providedSignatureAndBoardAddress:
- 			InitializeBoardAddress(configuration.boardAddress);
 			break;
 		default:
 			Error_Handler();
 			break;
 	}
-
-	while(1) {
-		HAL_Delay(10);
-	}
-
-///WriteData = 0x11;
-
-//	HAL_I2C_Mem_Write(&hi2c1, EEPROM_DEVICE_ADDRESS, MemAddress, MemAddSize, &WriteData, Size, EEPROM_WRITE_READ_TIMEOUT);
-//	HAL_Delay(10);
-//	HAL_I2C_Mem_Read(&hi2c1, EEPROM_DEVICE_ADDRESS, MemAddress, MemAddSize, &ReadData, Size, EEPROM_WRITE_READ_TIMEOUT);
-
 }
 
 void InitializeThermistors() {
@@ -1799,85 +1782,33 @@ void InitializeThermistors() {
 	}
 }
 
-// Function to calculate Prescaler, ARR, and CCR based on specific rules
 PwmConfig calculatePwmConfig(uint32_t pwmFreq, float dutyCyclePercent) {
     PwmConfig config = {0, 0, 0, false, 0, 0.0f};
-
-//    // --- Input Validation ---
-//    if (dutyCyclePercent < 0.0f || dutyCyclePercent > 100.0f) {
-//        std::cerr << "Error: Duty cycle must be between 0 and 100." << std::endl;
-//        return config;
-//    }
-//    if (pwmFreq == 0) {
-//        std::cerr << "Error: PWM frequency cannot be zero." << std::endl;
-//        return config;
-//    }
-
-    // --- Determine Prescaler based on your rule ---
-    uint32_t prescalerVal; // This will be 0 or 1, which always fits in uint16_t
+    uint32_t prescalerVal;
     if (pwmFreq >= 3000) {
-        prescalerVal = 0; // Prescaler + 1 = 1 (No division)
-    } else if (pwmFreq >= 1300 && pwmFreq < 3000) { // desired_pwm_freq < 3000 Hz
-    	prescalerVal = 1; // Prescaler + 1 = 2 (Divide by 2)
-    } else if (pwmFreq >= 860 && pwmFreq < 1300) { // desired_pwm_freq < 3000 Hz
-    	prescalerVal = 2; // Prescaler + 1 = 2 (Divide by 2)
+        prescalerVal = 0;
+    } else if (pwmFreq >= 1300) {
+    	prescalerVal = 1;
+    } else if (pwmFreq >= 860) {
+    	prescalerVal = 2;
     } else {
-    	// We want to achieve this F_PWM with a 16-bit ARR (max 65535).
-		// ARR = (F_CLK_TIM_INPUT / ((prescaler_val + 1) * F_PWM)) - 1
-		// We need (prescaler_val + 1) >= F_CLK_TIM_INPUT / (F_PWM * (ARR_max + 1))
-		// So, calculate the minimum required prescaler_plus_1
-		float minPrescalerPlus1Float = (1.0f * F_CLK_TIM_INPUT) / (pwmFreq * 65536.0f);
-
-		// Round up to the next integer to ensure ARR fits and frequency is not lower
+    	float minPrescalerPlus1Float = (1.0f * F_CLK_TIM_INPUT) / (static_cast<float>(pwmFreq) * 65536.0f);
 		prescalerVal = static_cast<uint32_t>(std::ceil(minPrescalerPlus1Float)) - 1;
-
-		// Ensure calculated prescaler does not exceed 16-bit limit
-//		if (prescaler_val > 65535) {
-//			std::cerr << "Error: Calculated prescaler (" << prescaler_val
-//					  << ") exceeds 16-bit limit. Cannot achieve desired frequency with 16-bit timer." << std::endl;
-//			config.success = false;
-//			return config;
-//		}
     }
-
-    // --- Calculate ARR (Auto-Reload Register) ---
-    // (ARR + 1) = F_CLK_TIM_INPUT / ((prescalerVal + 1) * F_PWM)
-    // Note: Use 1.0f * F_CLK_TIM_INPUT to force float division early for better precision
-    float periodTotalTicksFloat = (1.0f * F_CLK_TIM_INPUT) / ((prescalerVal + 1) * pwmFreq);
-
-    // Check if the calculated period is too small (meaning desired_pwm_freq is too high)
-//    if (period_total_ticks_float < 1.0f) {
-//        std::cerr << "Error: Desired PWM frequency (" << pwmFreq
-//                  << " Hz) is too high for this clock and prescaler. Minimum ARR+1 is 1." << std::endl;
-//        return config;
-//    }
-
+    float periodTotalTicksFloat = (1.0f * F_CLK_TIM_INPUT) / (static_cast<float>(prescalerVal + 1u) * static_cast<float>(pwmFreq));
     uint32_t calculatedArrTemp = static_cast<uint32_t>(std::round(periodTotalTicksFloat)) - 1;
 
-    // --- Check if ARR is within 16-bit limits (0 to 65535) ---
-//    if (calculated_arr_temp > 65535 || calculatedArrTemp == 0xFFFFFFFF) { // 0xFFFFFFFF for unsigned underflow
-//        std::cerr << "Error: Calculated ARR (" << calculatedArrTemp
-//                  << ") exceeds 16-bit limit or is too small (e.g., negative after conversion)." << std::endl;
-//        std::cerr << "Consider reducing PWM frequency. Max theoretical ARR is 65535." << std::endl;
-//        return config;
-//    }
-
-    // Store the valid calculated parameters
     config.prescaler = static_cast<uint16_t>(prescalerVal);
     config.arr = static_cast<uint16_t>(calculatedArrTemp);
 
-    // --- Calculate CCR (Capture/Compare Register) ---
-    // CCR = round((Desired Duty Cycle / 100.0) * (ARR + 1))
-    config.ccr = static_cast<uint16_t>(std::round((dutyCyclePercent / 100.0f) * (config.arr + 1)));
+    config.ccr = static_cast<uint16_t>(std::round((dutyCyclePercent / 100.0f) * static_cast<float>(config.arr + 1)));
 
-    // Safety check: ensure CCR does not exceed ARR + 1 (for 100% duty cycle)
     if (config.ccr > (config.arr + 1)) {
         config.ccr = config.arr + 1;
     }
 
-    // --- Calculate Actual Freq and Duty (for verification) ---
     config.actualFreq = F_CLK_TIM_INPUT / ((config.prescaler + 1) * (config.arr + 1));
-    config.actualDuty = (static_cast<float>(config.ccr) / (config.arr + 1)) * 100.0f;
+    config.actualDuty = (static_cast<float>(config.ccr) / static_cast<float>(config.arr + 1)) * 100.0f;
 
     config.success = true;
     return config;
