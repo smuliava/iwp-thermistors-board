@@ -22,6 +22,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "Errors/Errors.h"
 #include <cstdio>
 #include <cerrno>
 #include <sys/unistd.h>
@@ -47,11 +48,10 @@ using namespace std;
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-#define  F_CLK_TIM_INPUT 168000000UL
 #define PIN_NAME_LENGTH 5
 #define BOARD_DEFAULT_ADDRESS 88;
-#define EEPROM_DEVICE_ADDRESS 0b10101110
-#define EEPROM_WRITE_READ_TIMEOUT 1000
+#define EEPROM_DEVICE_ADDRESS 0b10100000
+#define EEPROM_WRITE_READ_TIMEOUT 21000
 #define EEPROM_MEM_SIZE 2
 #define EEPROM_STORAGE_STATE_SIZE sizeof(uint16_t)
 #define EEPROM_ADDRESS_SIZE sizeof(uint16_t)
@@ -61,16 +61,6 @@ using namespace std;
 #define EEPROM_CONFIGURATION_SIGNATURE_SIZE sizeof(EEPROM_CONFIGURATION_SIGNATURE)
 #define EEPROM_CONFIGURATION_SIGNATURE_ADDRESS 0
 
-
-// Structure to hold calculated PWM parameters
-struct PwmConfig {
-    uint16_t prescaler; // PSC register value (actual divider is prescaler + 1)
-    uint16_t arr;       // ARR register value (period is arr + 1)
-    uint16_t ccr;       // CCR register value (pulse width)
-    bool success;       // True if a valid configuration was found
-    uint32_t actualFreq; // Calculated actual frequency
-    float actualDuty;    // Calculated actual duty cycle
-};
 
 struct TemperatureReadings {
 	uint32_t pinNumber{};
@@ -100,6 +90,12 @@ struct ThermistorConfiguration {
 	}
 };
 
+struct TachometersState {
+	uint32_t tacho0TicksCount{};
+	uint32_t tacho0Rpm{};
+	uint32_t tacho0StartTimeTick{};
+};
+
 enum SavedConfigurationState {
 	emptyEEPROM,
 	providedSignatureAndBoardAddress
@@ -127,8 +123,6 @@ struct  __attribute__((packed)) ThermistorSavedConfiguration {
 
 	explicit ThermistorSavedConfiguration(const uint32_t sensorNumber): sensorNumber(sensorNumber) {};
 };
-
-
 
 struct __attribute__((packed)) BoardConfiguration {
 	uint8_t boardSignature[EEPROM_CONFIGURATION_SIGNATURE_SIZE] = {0};
@@ -174,6 +168,7 @@ enum TemperatureError {
 #define TEMPERATURE_READINGS_QUEUE_LENGTH(itemsPerSensor) 6 * itemsPerSensor
 #define INITIALIZE_PERIPHERAL_QUEUE_LENGTH 4
 #define THERMISTOR_NAME "thermistor"
+#define TACHO_COUNT_PERIOD_SECONDS 2
 
 
 /* USER CODE END PD */
@@ -186,21 +181,9 @@ enum TemperatureError {
 /* Private variables ---------------------------------------------------------*/
 ADC_HandleTypeDef hadc1;
 DMA_HandleTypeDef hdma_adc1;
-
 FDCAN_HandleTypeDef hfdcan1;
-
 I2C_HandleTypeDef hi2c1;
-
-TIM_HandleTypeDef htim1;
-TIM_HandleTypeDef htim2;
-TIM_HandleTypeDef htim3;
-TIM_HandleTypeDef htim4;
 TIM_HandleTypeDef htim6;
-TIM_HandleTypeDef htim8;
-TIM_HandleTypeDef htim15;
-TIM_HandleTypeDef htim16;
-TIM_HandleTypeDef htim17;
-
 UART_HandleTypeDef huart2;
 
 Thermistor* theremistors[adcBufferLength];
@@ -223,8 +206,9 @@ constexpr osThreadAttr_t temperatureSensorSendingTask_attributes = {
 FDCAN_RxHeaderTypeDef RxHeader;
 FDCAN_TxHeaderTypeDef TxHeader;
 uint8_t RxData[120];
+TachometersState tachometersState;
 
-QueueHandle_t xInitializePeriferialQueue;
+QueueHandle_t xInitializePeripheralQueue;
 
 map<string, uint32_t> pinNamesMap = {
 		{pinNames[0], 0},
@@ -257,7 +241,7 @@ static void FDCAN1_StartWithFilters();
 uint32_t GetBoardAddress();
 void InitializeThermistors();
 void InitializeConfiguration();
-PwmConfig calculatePwmConfig(uint32_t pwmFreq, float dutyCyclePercent);
+
 static void MX_TIM1_Init(uint32_t prescaler, uint32_t arr, uint32_t ccr);
 static void MX_TIM2_Init(uint32_t prescaler, uint32_t arr, uint32_t ccr);
 static void MX_TIM3_Init(uint32_t prescaler, uint32_t arr, uint32_t ccr);
@@ -331,14 +315,8 @@ int main(void)
   HAL_ADCEx_Calibration_Start(&hadc1, ADC_SINGLE_ENDED);
   HAL_ADC_Start_DMA(&hadc1, (uint32_t*)&adcValues, adcBufferLength);
 
-  PwmConfig pwm1Cfg = calculatePwmConfig(25000, 20);
-  MX_TIM1_Init(pwm1Cfg.prescaler, pwm1Cfg.arr, pwm1Cfg.ccr);
-  HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
-  HAL_TIMEx_PWMN_Start(&htim1, TIM_CHANNEL_1);
-
   HAL_TIM_Base_Start_IT(&htim6);
 
-	HAL_Delay(1000);
   InitializeConfiguration();
 
 
@@ -364,7 +342,7 @@ int main(void)
 
   /* USER CODE BEGIN RTOS_QUEUES */
 
-  xInitializePeriferialQueue = xQueueCreate(INITIALIZE_PERIPHERAL_QUEUE_LENGTH, sizeof(ThermistorConfiguration));
+  xInitializePeripheralQueue = xQueueCreate(INITIALIZE_PERIPHERAL_QUEUE_LENGTH, sizeof(ThermistorConfiguration));
 
 
   /* USER CODE END RTOS_QUEUES */
@@ -682,7 +660,7 @@ static void MX_I2C1_Init(void)
 
   /* USER CODE END I2C1_Init 1 */
   hi2c1.Instance = I2C1;
-  hi2c1.Init.Timing = 0x50916E9F; //0x20B21E5A;
+  hi2c1.Init.Timing = 0x20B21E5A; //0x50916E9F; //0x20B21E5A;
   hi2c1.Init.OwnAddress1 = 0;
   hi2c1.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
   hi2c1.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
@@ -711,224 +689,6 @@ static void MX_I2C1_Init(void)
   /* USER CODE BEGIN I2C1_Init 2 */
 
   /* USER CODE END I2C1_Init 2 */
-
-}
-
-/**
-  * @brief TIM1 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_TIM1_Init(uint32_t prescaler, uint32_t arr, uint32_t ccr)
-{
-
-  /* USER CODE BEGIN TIM1_Init 0 */
-
-  /* USER CODE END TIM1_Init 0 */
-
-  TIM_MasterConfigTypeDef sMasterConfig = {0};
-  TIM_OC_InitTypeDef sConfigOC = {0};
-  TIM_BreakDeadTimeConfigTypeDef sBreakDeadTimeConfig = {0};
-
-  /* USER CODE BEGIN TIM1_Init 1 */
-
-  /* USER CODE END TIM1_Init 1 */
-  htim1.Instance = TIM1;
-  htim1.Init.Prescaler = prescaler;
-  htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim1.Init.Period = arr;
-  htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-  htim1.Init.RepetitionCounter = 0;
-  htim1.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
-  if (HAL_TIM_PWM_Init(&htim1) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
-  sMasterConfig.MasterOutputTrigger2 = TIM_TRGO2_RESET;
-  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
-  if (HAL_TIMEx_MasterConfigSynchronization(&htim1, &sMasterConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sConfigOC.OCMode = TIM_OCMODE_PWM1;
-  sConfigOC.Pulse = ccr;
-  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
-  sConfigOC.OCNPolarity = TIM_OCNPOLARITY_HIGH;
-  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
-  sConfigOC.OCIdleState = TIM_OCIDLESTATE_RESET;
-  sConfigOC.OCNIdleState = TIM_OCNIDLESTATE_RESET;
-  if (HAL_TIM_PWM_ConfigChannel(&htim1, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sBreakDeadTimeConfig.OffStateRunMode = TIM_OSSR_DISABLE;
-  sBreakDeadTimeConfig.OffStateIDLEMode = TIM_OSSI_DISABLE;
-  sBreakDeadTimeConfig.LockLevel = TIM_LOCKLEVEL_OFF;
-  sBreakDeadTimeConfig.DeadTime = 0;
-  sBreakDeadTimeConfig.BreakState = TIM_BREAK_DISABLE;
-  sBreakDeadTimeConfig.BreakPolarity = TIM_BREAKPOLARITY_HIGH;
-  sBreakDeadTimeConfig.BreakFilter = 0;
-  sBreakDeadTimeConfig.BreakAFMode = TIM_BREAK_AFMODE_INPUT;
-  sBreakDeadTimeConfig.Break2State = TIM_BREAK2_DISABLE;
-  sBreakDeadTimeConfig.Break2Polarity = TIM_BREAK2POLARITY_HIGH;
-  sBreakDeadTimeConfig.Break2Filter = 0;
-  sBreakDeadTimeConfig.Break2AFMode = TIM_BREAK_AFMODE_INPUT;
-  sBreakDeadTimeConfig.AutomaticOutput = TIM_AUTOMATICOUTPUT_DISABLE;
-  if (HAL_TIMEx_ConfigBreakDeadTime(&htim1, &sBreakDeadTimeConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN TIM1_Init 2 */
-
-  /* USER CODE END TIM1_Init 2 */
-  HAL_TIM_MspPostInit(&htim1);
-}
-
-/**
-  * @brief TIM2 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_TIM2_Init(uint32_t prescaler, uint32_t arr, uint32_t ccr)
-{
-
-  /* USER CODE BEGIN TIM2_Init 0 */
-
-  /* USER CODE END TIM2_Init 0 */
-
-  TIM_MasterConfigTypeDef sMasterConfig = {0};
-  TIM_OC_InitTypeDef sConfigOC = {0};
-
-  /* USER CODE BEGIN TIM2_Init 1 */
-
-  /* USER CODE END TIM2_Init 1 */
-  htim2.Instance = TIM2;
-  htim2.Init.Prescaler = prescaler;
-  htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim2.Init.Period = arr;
-  htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-  htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
-  if (HAL_TIM_PWM_Init(&htim2) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
-  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
-  if (HAL_TIMEx_MasterConfigSynchronization(&htim2, &sMasterConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sConfigOC.OCMode = TIM_OCMODE_PWM1;
-  sConfigOC.Pulse = ccr;
-  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
-  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
-  if (HAL_TIM_PWM_ConfigChannel(&htim2, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN TIM2_Init 2 */
-
-  /* USER CODE END TIM2_Init 2 */
-  HAL_TIM_MspPostInit(&htim2);
-
-}
-
-/**
-  * @brief TIM3 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_TIM3_Init(uint32_t prescaler, uint32_t arr, uint32_t ccr)
-{
-
-  /* USER CODE BEGIN TIM3_Init 0 */
-
-  /* USER CODE END TIM3_Init 0 */
-
-  TIM_MasterConfigTypeDef sMasterConfig = {0};
-  TIM_OC_InitTypeDef sConfigOC = {0};
-
-  /* USER CODE BEGIN TIM3_Init 1 */
-
-  /* USER CODE END TIM3_Init 1 */
-  htim3.Instance = TIM3;
-  htim3.Init.Prescaler = prescaler;
-  htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim3.Init.Period = arr;
-  htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-  htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
-  if (HAL_TIM_PWM_Init(&htim3) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
-  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
-  if (HAL_TIMEx_MasterConfigSynchronization(&htim3, &sMasterConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sConfigOC.OCMode = TIM_OCMODE_PWM1;
-  sConfigOC.Pulse = ccr;
-  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
-  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
-  if (HAL_TIM_PWM_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN TIM3_Init 2 */
-
-  /* USER CODE END TIM3_Init 2 */
-  HAL_TIM_MspPostInit(&htim3);
-
-}
-
-/**
-  * @brief TIM4 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_TIM4_Init(uint32_t prescaler, uint32_t arr, uint32_t ccr)
-{
-
-  /* USER CODE BEGIN TIM4_Init 0 */
-
-  /* USER CODE END TIM4_Init 0 */
-
-  TIM_MasterConfigTypeDef sMasterConfig = {0};
-  TIM_OC_InitTypeDef sConfigOC = {0};
-
-  /* USER CODE BEGIN TIM4_Init 1 */
-
-  /* USER CODE END TIM4_Init 1 */
-  htim4.Instance = TIM4;
-  htim4.Init.Prescaler = prescaler;
-  htim4.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim4.Init.Period = arr;
-  htim4.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-  htim4.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
-  if (HAL_TIM_PWM_Init(&htim4) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
-  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
-  if (HAL_TIMEx_MasterConfigSynchronization(&htim4, &sMasterConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sConfigOC.OCMode = TIM_OCMODE_PWM1;
-  sConfigOC.Pulse = ccr;
-  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
-  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
-  if (HAL_TIM_PWM_ConfigChannel(&htim4, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN TIM4_Init 2 */
-
-  /* USER CODE END TIM4_Init 2 */
-  HAL_TIM_MspPostInit(&htim4);
 
 }
 
@@ -967,270 +727,6 @@ static void MX_TIM6_Init(void)
   /* USER CODE BEGIN TIM6_Init 2 */
 
   /* USER CODE END TIM6_Init 2 */
-
-}
-
-/**
-  * @brief TIM8 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_TIM8_Init(uint32_t prescaler, uint32_t arr, uint32_t ccr)
-{
-
-  /* USER CODE BEGIN TIM8_Init 0 */
-
-  /* USER CODE END TIM8_Init 0 */
-
-  TIM_MasterConfigTypeDef sMasterConfig = {0};
-  TIM_OC_InitTypeDef sConfigOC = {0};
-  TIM_BreakDeadTimeConfigTypeDef sBreakDeadTimeConfig = {0};
-
-  /* USER CODE BEGIN TIM8_Init 1 */
-
-  /* USER CODE END TIM8_Init 1 */
-  htim8.Instance = TIM8;
-  htim8.Init.Prescaler = prescaler;
-  htim8.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim8.Init.Period = arr;
-  htim8.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-  htim8.Init.RepetitionCounter = 0;
-  htim8.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
-  if (HAL_TIM_PWM_Init(&htim8) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
-  sMasterConfig.MasterOutputTrigger2 = TIM_TRGO2_RESET;
-  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
-  if (HAL_TIMEx_MasterConfigSynchronization(&htim8, &sMasterConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sConfigOC.OCMode = TIM_OCMODE_PWM1;
-  sConfigOC.Pulse = ccr;
-  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
-  sConfigOC.OCNPolarity = TIM_OCNPOLARITY_HIGH;
-  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
-  sConfigOC.OCIdleState = TIM_OCIDLESTATE_RESET;
-  sConfigOC.OCNIdleState = TIM_OCNIDLESTATE_RESET;
-  if (HAL_TIM_PWM_ConfigChannel(&htim8, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sBreakDeadTimeConfig.OffStateRunMode = TIM_OSSR_DISABLE;
-  sBreakDeadTimeConfig.OffStateIDLEMode = TIM_OSSI_DISABLE;
-  sBreakDeadTimeConfig.LockLevel = TIM_LOCKLEVEL_OFF;
-  sBreakDeadTimeConfig.DeadTime = 0;
-  sBreakDeadTimeConfig.BreakState = TIM_BREAK_DISABLE;
-  sBreakDeadTimeConfig.BreakPolarity = TIM_BREAKPOLARITY_HIGH;
-  sBreakDeadTimeConfig.BreakFilter = 0;
-  sBreakDeadTimeConfig.BreakAFMode = TIM_BREAK_AFMODE_INPUT;
-  sBreakDeadTimeConfig.Break2State = TIM_BREAK2_DISABLE;
-  sBreakDeadTimeConfig.Break2Polarity = TIM_BREAK2POLARITY_HIGH;
-  sBreakDeadTimeConfig.Break2Filter = 0;
-  sBreakDeadTimeConfig.Break2AFMode = TIM_BREAK_AFMODE_INPUT;
-  sBreakDeadTimeConfig.AutomaticOutput = TIM_AUTOMATICOUTPUT_DISABLE;
-  if (HAL_TIMEx_ConfigBreakDeadTime(&htim8, &sBreakDeadTimeConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN TIM8_Init 2 */
-
-  /* USER CODE END TIM8_Init 2 */
-  HAL_TIM_MspPostInit(&htim8);
-
-}
-
-/**
-  * @brief TIM15 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_TIM15_Init(uint32_t prescaler, uint32_t arr, uint32_t ccr)
-{
-
-  /* USER CODE BEGIN TIM15_Init 0 */
-
-  /* USER CODE END TIM15_Init 0 */
-
-  TIM_MasterConfigTypeDef sMasterConfig = {0};
-  TIM_OC_InitTypeDef sConfigOC = {0};
-  TIM_BreakDeadTimeConfigTypeDef sBreakDeadTimeConfig = {0};
-
-  /* USER CODE BEGIN TIM15_Init 1 */
-
-  /* USER CODE END TIM15_Init 1 */
-  htim15.Instance = TIM15;
-  htim15.Init.Prescaler = prescaler;
-  htim15.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim15.Init.Period = arr;
-  htim15.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-  htim15.Init.RepetitionCounter = 0;
-  htim15.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
-  if (HAL_TIM_PWM_Init(&htim15) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
-  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
-  if (HAL_TIMEx_MasterConfigSynchronization(&htim15, &sMasterConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sConfigOC.OCMode = TIM_OCMODE_PWM1;
-  sConfigOC.Pulse = ccr;
-  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
-  sConfigOC.OCNPolarity = TIM_OCNPOLARITY_HIGH;
-  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
-  sConfigOC.OCIdleState = TIM_OCIDLESTATE_RESET;
-  sConfigOC.OCNIdleState = TIM_OCNIDLESTATE_RESET;
-  if (HAL_TIM_PWM_ConfigChannel(&htim15, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sBreakDeadTimeConfig.OffStateRunMode = TIM_OSSR_DISABLE;
-  sBreakDeadTimeConfig.OffStateIDLEMode = TIM_OSSI_DISABLE;
-  sBreakDeadTimeConfig.LockLevel = TIM_LOCKLEVEL_OFF;
-  sBreakDeadTimeConfig.DeadTime = 0;
-  sBreakDeadTimeConfig.BreakState = TIM_BREAK_DISABLE;
-  sBreakDeadTimeConfig.BreakPolarity = TIM_BREAKPOLARITY_HIGH;
-  sBreakDeadTimeConfig.BreakFilter = 0;
-  sBreakDeadTimeConfig.AutomaticOutput = TIM_AUTOMATICOUTPUT_DISABLE;
-  if (HAL_TIMEx_ConfigBreakDeadTime(&htim15, &sBreakDeadTimeConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN TIM15_Init 2 */
-
-  /* USER CODE END TIM15_Init 2 */
-  HAL_TIM_MspPostInit(&htim15);
-
-}
-
-/**
-  * @brief TIM16 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_TIM16_Init(uint32_t prescaler, uint32_t arr, uint32_t ccr)
-{
-
-  /* USER CODE BEGIN TIM16_Init 0 */
-
-  /* USER CODE END TIM16_Init 0 */
-
-  TIM_OC_InitTypeDef sConfigOC = {0};
-  TIM_BreakDeadTimeConfigTypeDef sBreakDeadTimeConfig = {0};
-
-  /* USER CODE BEGIN TIM16_Init 1 */
-
-  /* USER CODE END TIM16_Init 1 */
-  htim16.Instance = TIM16;
-  htim16.Init.Prescaler = prescaler;
-  htim16.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim16.Init.Period = arr;
-  htim16.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-  htim16.Init.RepetitionCounter = 0;
-  htim16.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
-  if (HAL_TIM_Base_Init(&htim16) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  if (HAL_TIM_PWM_Init(&htim16) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sConfigOC.OCMode = TIM_OCMODE_PWM1;
-  sConfigOC.Pulse = ccr;
-  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
-  sConfigOC.OCNPolarity = TIM_OCNPOLARITY_HIGH;
-  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
-  sConfigOC.OCIdleState = TIM_OCIDLESTATE_RESET;
-  sConfigOC.OCNIdleState = TIM_OCNIDLESTATE_RESET;
-  if (HAL_TIM_PWM_ConfigChannel(&htim16, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sBreakDeadTimeConfig.OffStateRunMode = TIM_OSSR_DISABLE;
-  sBreakDeadTimeConfig.OffStateIDLEMode = TIM_OSSI_DISABLE;
-  sBreakDeadTimeConfig.LockLevel = TIM_LOCKLEVEL_OFF;
-  sBreakDeadTimeConfig.DeadTime = 0;
-  sBreakDeadTimeConfig.BreakState = TIM_BREAK_DISABLE;
-  sBreakDeadTimeConfig.BreakPolarity = TIM_BREAKPOLARITY_HIGH;
-  sBreakDeadTimeConfig.BreakFilter = 0;
-  sBreakDeadTimeConfig.AutomaticOutput = TIM_AUTOMATICOUTPUT_DISABLE;
-  if (HAL_TIMEx_ConfigBreakDeadTime(&htim16, &sBreakDeadTimeConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN TIM16_Init 2 */
-
-  /* USER CODE END TIM16_Init 2 */
-  HAL_TIM_MspPostInit(&htim16);
-
-}
-
-/**
-  * @brief TIM17 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_TIM17_Init(uint32_t prescaler, uint32_t arr, uint32_t ccr)
-{
-
-  /* USER CODE BEGIN TIM17_Init 0 */
-
-  /* USER CODE END TIM17_Init 0 */
-
-  TIM_OC_InitTypeDef sConfigOC = {0};
-  TIM_BreakDeadTimeConfigTypeDef sBreakDeadTimeConfig = {0};
-
-  /* USER CODE BEGIN TIM17_Init 1 */
-
-  /* USER CODE END TIM17_Init 1 */
-  htim17.Instance = TIM17;
-  htim17.Init.Prescaler = prescaler;
-  htim17.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim17.Init.Period = arr;
-  htim17.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-  htim17.Init.RepetitionCounter = 0;
-  htim17.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
-  if (HAL_TIM_Base_Init(&htim17) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  if (HAL_TIM_PWM_Init(&htim17) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sConfigOC.OCMode = TIM_OCMODE_PWM1;
-  sConfigOC.Pulse = ccr;
-  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
-  sConfigOC.OCNPolarity = TIM_OCNPOLARITY_HIGH;
-  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
-  sConfigOC.OCIdleState = TIM_OCIDLESTATE_RESET;
-  sConfigOC.OCNIdleState = TIM_OCNIDLESTATE_RESET;
-  if (HAL_TIM_PWM_ConfigChannel(&htim17, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sBreakDeadTimeConfig.OffStateRunMode = TIM_OSSR_DISABLE;
-  sBreakDeadTimeConfig.OffStateIDLEMode = TIM_OSSI_DISABLE;
-  sBreakDeadTimeConfig.LockLevel = TIM_LOCKLEVEL_OFF;
-  sBreakDeadTimeConfig.DeadTime = 0;
-  sBreakDeadTimeConfig.BreakState = TIM_BREAK_DISABLE;
-  sBreakDeadTimeConfig.BreakPolarity = TIM_BREAKPOLARITY_HIGH;
-  sBreakDeadTimeConfig.BreakFilter = 0;
-  sBreakDeadTimeConfig.AutomaticOutput = TIM_AUTOMATICOUTPUT_DISABLE;
-  if (HAL_TIMEx_ConfigBreakDeadTime(&htim17, &sBreakDeadTimeConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN TIM17_Init 2 */
-
-  /* USER CODE END TIM17_Init 2 */
-  HAL_TIM_MspPostInit(&htim17);
 
 }
 
@@ -1398,6 +894,15 @@ constexpr ParamDescriptor M308NewParams[] =
 	END_PARAMS
 };
 
+constexpr ParamDescriptor M950FanParams[] =
+{
+	UINT16_PARAM('F'),
+	PWM_FREQ_PARAM('Q'),
+	REDUCED_STRING_PARAM('C'),
+	FLOAT_PARAM('K'),					// tacho pulses/rev added at 3.5
+	END_PARAMS
+};
+
 GCodeResult ProcessM308(const CanMessageGeneric& msg, ThermistorConfiguration& config, const string reply) noexcept
 {
 	CanMessageGenericParser parser(msg, M308NewParams);
@@ -1460,27 +965,7 @@ GCodeResult ProcessM308(const CanMessageGeneric& msg, ThermistorConfiguration& c
 	return GCodeResult::error;
 }
 
-//template<class T> T* SetupRequestMessage(CanRequestId rid, CanAddress src, CanAddress dest, CanMessageType msgType) noexcept {
-//		id.SetRequest(msgType, src, dest);
-//		dataLength = sizeof(T);
-//		marker = 0;
-//		extId = 1;
-//		fdMode = 1;
-//		useBrs = 0;
-//		remote = 0;
-//		reportInFifo = 0;
-//		spare = 0;
-//		T* rslt = reinterpret_cast<T*>(&msg);
-//		rslt->SetRequestId(rid);
-//		return rslt;
-//}
-
 extern "C" {
-
-	void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
-
-	}
-
 	int _write(int file, char *ptr, int len) {
 		if (file != STDOUT_FILENO && file != STDERR_FILENO) {
 			errno = EBADF;
@@ -1530,6 +1015,10 @@ extern "C" {
 				printHexArray(data->data, 60);
 			}
 
+			if (can.Dst() == GetBoardAddress() && can.MsgType() == CanMessageType::m950Fan) {
+
+			}
+
 			if (can.Dst() == GetBoardAddress() && can.MsgType() == CanMessageType::m308New) {
 
 				const string reply;
@@ -1537,7 +1026,7 @@ extern "C" {
 				GCodeResult parceResult = ProcessM308(*data, thermistorConfig, reply);
 
 				BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-				xQueueSendFromISR(xInitializePeriferialQueue, &thermistorConfig, &xHigherPriorityTaskWoken);
+				xQueueSendFromISR(xInitializePeripheralQueue, &thermistorConfig, &xHigherPriorityTaskWoken);
 
 				printf("FDCAN: Src: %u, Dst: %u, MsgType: %u, isRequest: %u, isResponse: %u\r\n",
 						can.Src(),
@@ -1584,6 +1073,22 @@ extern "C" {
 	}
 }
 
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
+	if (GPIO_Pin == TACH00_Pin) {
+		tachometersState.tacho0TicksCount++;
+		if (const uint32_t tacho0SecondsCount = secondsTicks - tachometersState.tacho0StartTimeTick; tacho0SecondsCount > TACHO_COUNT_PERIOD_SECONDS) {
+			tachometersState.tacho0Rpm = tachometersState.tacho0TicksCount * 60 / tacho0SecondsCount;
+			tachometersState.tacho0StartTimeTick = secondsTicks;
+			printf("Tacho 0: %u RPM; Ticks count: %u \r\n", tachometersState.tacho0Rpm, tachometersState.tacho0TicksCount);
+			tachometersState.tacho0TicksCount = {};
+
+
+		}
+
+	}
+	return;
+}
+
 static void FDCAN1_StartWithFilters() {
 //	FDCAN_FilterTypeDef sFilterConfig;
 //	sFilterConfig.IdType = FDCAN_STANDARD_ID;
@@ -1621,7 +1126,7 @@ static void FDCAN1_StartWithFilters() {
 
   for(;;)
   {
-	  if (xQueueReceive(xInitializePeriferialQueue, &thermistorConfig, xTicksToWait) == pdPASS) {
+	  if (xQueueReceive(xInitializePeripheralQueue, &thermistorConfig, xTicksToWait) == pdPASS) {
 		  if (pinNamesMap.contains(thermistorConfig.pinName)) {
 			  const uint32_t thermistorIndex = pinNamesMap[thermistorConfig.pinName];
 			  Thermistor* thermistor = theremistors[thermistorIndex];
@@ -1764,6 +1269,7 @@ void InitializeConfiguration() {
 			Error_Handler();
 			break;
 		case SavedConfigurationState::providedSignatureAndBoardAddress:
+		  printf("Board initialized. Address: %u \r\n", GetBoardAddress());
 			break;
 		default:
 			Error_Handler();
@@ -1780,38 +1286,6 @@ void InitializeThermistors() {
 			);
 		theremistors[i] = theremistor;
 	}
-}
-
-PwmConfig calculatePwmConfig(uint32_t pwmFreq, float dutyCyclePercent) {
-    PwmConfig config = {0, 0, 0, false, 0, 0.0f};
-    uint32_t prescalerVal;
-    if (pwmFreq >= 3000) {
-        prescalerVal = 0;
-    } else if (pwmFreq >= 1300) {
-    	prescalerVal = 1;
-    } else if (pwmFreq >= 860) {
-    	prescalerVal = 2;
-    } else {
-    	float minPrescalerPlus1Float = (1.0f * F_CLK_TIM_INPUT) / (static_cast<float>(pwmFreq) * 65536.0f);
-		prescalerVal = static_cast<uint32_t>(std::ceil(minPrescalerPlus1Float)) - 1;
-    }
-    float periodTotalTicksFloat = (1.0f * F_CLK_TIM_INPUT) / (static_cast<float>(prescalerVal + 1u) * static_cast<float>(pwmFreq));
-    uint32_t calculatedArrTemp = static_cast<uint32_t>(std::round(periodTotalTicksFloat)) - 1;
-
-    config.prescaler = static_cast<uint16_t>(prescalerVal);
-    config.arr = static_cast<uint16_t>(calculatedArrTemp);
-
-    config.ccr = static_cast<uint16_t>(std::round((dutyCyclePercent / 100.0f) * static_cast<float>(config.arr + 1)));
-
-    if (config.ccr > (config.arr + 1)) {
-        config.ccr = config.arr + 1;
-    }
-
-    config.actualFreq = F_CLK_TIM_INPUT / ((config.prescaler + 1) * (config.arr + 1));
-    config.actualDuty = (static_cast<float>(config.ccr) / static_cast<float>(config.arr + 1)) * 100.0f;
-
-    config.success = true;
-    return config;
 }
 
 void OnSecondTick(void) {
@@ -1856,21 +1330,6 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 	}
 
   /* USER CODE END Callback 1 */
-}
-
-/**
-  * @brief  This function is executed in case of error occurrence.
-  * @retval None
-  */
-void Error_Handler(void)
-{
-  /* USER CODE BEGIN Error_Handler_Debug */
-  /* User can add his own implementation to report the HAL error return state */
-  __disable_irq();
-  while (1)
-  {
-  }
-  /* USER CODE END Error_Handler_Debug */
 }
 
 #ifdef  USE_FULL_ASSERT

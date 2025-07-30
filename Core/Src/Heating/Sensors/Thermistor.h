@@ -24,15 +24,15 @@ public:
 	double getTempCelsius();
 	double getLastKnownTemperatureC();
 
-	void setThermistorResistanceAt25Value(const double value);
+	void setThermistorResistanceAt25Value(double value);
 
-	void setSeriesResistorValue(const double value);
+	void setSeriesResistorValue(double value);
 
-	void setBettaParameterValue(const double value);
+	void setBettaParameterValue(double value);
 
-	void setCCoefficientValue(const double value);
+	void setCCoefficientValue(double value);
 
-	void setSensorNumberValue(const uint8_t value);
+	void setSensorNumberValue(uint8_t value);
 
 	const uint8_t getSensorNumberValue();
 
@@ -50,14 +50,14 @@ private:
 	double bettaParameter;
 	double cCoefficient;
 	uint8_t sensorNumber;
-	string pinName = "";
+	string pinName;
 	double lastKnowTemperatureC;
 
 
 	volatile uint32_t *adcValue;
 
 	double getCurrentThermistorResistance();
-	void setPinNameValue(const string value);
+	void setPinNameValue(string value);
 };
 
 #endif /* SRC_HEATING_SENSORS_THERMISTOR_H_ */

@@ -1,7 +1,5 @@
-Core/Src/main.o: ../Core/Src/main.cpp ../Core/Inc/main.h \
- ../Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal.h \
- ../Core/Inc/stm32g4xx_hal_conf.h \
- ../Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal_rcc.h \
+Core/Src/Pwm/Pwm.o: ../Core/Src/Pwm/Pwm.cpp ../Core/Src/Pwm/Pwm.h \
+ ../Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal_tim.h \
  ../Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal_def.h \
  ../Drivers/CMSIS/Device/ST/STM32G4xx/Include/stm32g4xx.h \
  ../Drivers/CMSIS/Device/ST/STM32G4xx/Include/stm32g431xx.h \
@@ -11,7 +9,9 @@ Core/Src/main.o: ../Core/Src/main.cpp ../Core/Inc/main.h \
  ../Drivers/CMSIS/Include/cmsis_gcc.h \
  ../Drivers/CMSIS/Include/mpu_armv7.h \
  ../Drivers/CMSIS/Device/ST/STM32G4xx/Include/system_stm32g4xx.h \
- ../Drivers/STM32G4xx_HAL_Driver/Inc/Legacy/stm32_hal_legacy.h \
+ ../Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal.h \
+ ../Core/Inc/stm32g4xx_hal_conf.h \
+ ../Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal_rcc.h \
  ../Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal_rcc_ex.h \
  ../Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal_gpio.h \
  ../Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal_gpio_ex.h \
@@ -30,34 +30,13 @@ Core/Src/main.o: ../Core/Src/main.cpp ../Core/Inc/main.h \
  ../Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal_i2c_ex.h \
  ../Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal_pwr.h \
  ../Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal_pwr_ex.h \
- ../Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal_tim.h \
- ../Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal_tim_ex.h \
  ../Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal_uart.h \
  ../Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal_uart_ex.h \
- ../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2/cmsis_os.h \
- ../Middlewares/Third_Party/FreeRTOS/Source/include/FreeRTOS.h \
- ../Core/Inc/FreeRTOSConfig.h \
- ../Middlewares/Third_Party/FreeRTOS/Source/include/projdefs.h \
- ../Middlewares/Third_Party/FreeRTOS/Source/include/portable.h \
- ../Middlewares/Third_Party/FreeRTOS/Source/include/deprecated_definitions.h \
- ../Middlewares/Third_Party/FreeRTOS/Source/portable/GCC/ARM_CM4F/portmacro.h \
- ../Middlewares/Third_Party/FreeRTOS/Source/include/mpu_wrappers.h \
- ../Middlewares/Third_Party/FreeRTOS/Source/include/task.h \
- ../Middlewares/Third_Party/FreeRTOS/Source/include/list.h \
- ../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2/cmsis_os2.h \
- ../Core/Src/Errors/Errors.h \
- ../Middlewares/Third_Party/FreeRTOS/Source/include/queue.h \
- ../Middlewares/Third_Party/FreeRTOS/Source/include/task.h \
- ../Middlewares/Third_Party/FreeRTOS/Source/include/semphr.h \
- ../Middlewares/Third_Party/FreeRTOS/Source/include/queue.h \
- ../Core/Src/Heating/Sensors/Thermistor.h ../Core/Inc/CanId.h \
- ../Core/Inc/CoreTypes.h ../Core/Inc/CanMessageGenericParser.h \
- ../Core/Inc/CanMessageFormats.h ../Core/Inc/CanSettings.h \
- ../Core/Inc/CanId.h ../Core/Inc/CanMessageGenericTableFormat.h
-../Core/Inc/main.h:
-../Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal.h:
-../Core/Inc/stm32g4xx_hal_conf.h:
-../Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal_rcc.h:
+ ../Drivers/STM32G4xx_HAL_Driver/Inc/Legacy/stm32_hal_legacy.h \
+ ../Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal_tim_ex.h \
+ ../Core/Src/Pwm/../Errors/Errors.h
+../Core/Src/Pwm/Pwm.h:
+../Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal_tim.h:
 ../Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal_def.h:
 ../Drivers/CMSIS/Device/ST/STM32G4xx/Include/stm32g4xx.h:
 ../Drivers/CMSIS/Device/ST/STM32G4xx/Include/stm32g431xx.h:
@@ -67,7 +46,9 @@ Core/Src/main.o: ../Core/Src/main.cpp ../Core/Inc/main.h \
 ../Drivers/CMSIS/Include/cmsis_gcc.h:
 ../Drivers/CMSIS/Include/mpu_armv7.h:
 ../Drivers/CMSIS/Device/ST/STM32G4xx/Include/system_stm32g4xx.h:
-../Drivers/STM32G4xx_HAL_Driver/Inc/Legacy/stm32_hal_legacy.h:
+../Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal.h:
+../Core/Inc/stm32g4xx_hal_conf.h:
+../Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal_rcc.h:
 ../Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal_rcc_ex.h:
 ../Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal_gpio.h:
 ../Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal_gpio_ex.h:
@@ -86,31 +67,8 @@ Core/Src/main.o: ../Core/Src/main.cpp ../Core/Inc/main.h \
 ../Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal_i2c_ex.h:
 ../Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal_pwr.h:
 ../Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal_pwr_ex.h:
-../Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal_tim.h:
-../Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal_tim_ex.h:
 ../Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal_uart.h:
 ../Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal_uart_ex.h:
-../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2/cmsis_os.h:
-../Middlewares/Third_Party/FreeRTOS/Source/include/FreeRTOS.h:
-../Core/Inc/FreeRTOSConfig.h:
-../Middlewares/Third_Party/FreeRTOS/Source/include/projdefs.h:
-../Middlewares/Third_Party/FreeRTOS/Source/include/portable.h:
-../Middlewares/Third_Party/FreeRTOS/Source/include/deprecated_definitions.h:
-../Middlewares/Third_Party/FreeRTOS/Source/portable/GCC/ARM_CM4F/portmacro.h:
-../Middlewares/Third_Party/FreeRTOS/Source/include/mpu_wrappers.h:
-../Middlewares/Third_Party/FreeRTOS/Source/include/task.h:
-../Middlewares/Third_Party/FreeRTOS/Source/include/list.h:
-../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2/cmsis_os2.h:
-../Core/Src/Errors/Errors.h:
-../Middlewares/Third_Party/FreeRTOS/Source/include/queue.h:
-../Middlewares/Third_Party/FreeRTOS/Source/include/task.h:
-../Middlewares/Third_Party/FreeRTOS/Source/include/semphr.h:
-../Middlewares/Third_Party/FreeRTOS/Source/include/queue.h:
-../Core/Src/Heating/Sensors/Thermistor.h:
-../Core/Inc/CanId.h:
-../Core/Inc/CoreTypes.h:
-../Core/Inc/CanMessageGenericParser.h:
-../Core/Inc/CanMessageFormats.h:
-../Core/Inc/CanSettings.h:
-../Core/Inc/CanId.h:
-../Core/Inc/CanMessageGenericTableFormat.h:
+../Drivers/STM32G4xx_HAL_Driver/Inc/Legacy/stm32_hal_legacy.h:
+../Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal_tim_ex.h:
+../Core/Src/Pwm/../Errors/Errors.h:

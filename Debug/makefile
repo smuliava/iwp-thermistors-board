@@ -15,7 +15,9 @@ RM := rm -rf
 -include Middlewares/Third_Party/FreeRTOS/Source/subdir.mk
 -include Drivers/STM32G4xx_HAL_Driver/Src/subdir.mk
 -include Core/Startup/subdir.mk
+-include Core/Src/Pwm/subdir.mk
 -include Core/Src/Heating/Sensors/subdir.mk
+-include Core/Src/Errors/subdir.mk
 -include Core/Src/subdir.mk
 -include objects.mk
 
