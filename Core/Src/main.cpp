@@ -36,11 +36,11 @@
 #include "semphr.h"
 
 #include <ctgmath>
-#include "Sensors/Thermistor.h"
+#include "Heating/Sensors/Thermistor.h"
 #include <CanId.h>
 #include <CanMessageGenericParser.h>
 #include <String.h>
-#include <string.h>
+#include "Errors.h"
 
 using namespace std;
 
@@ -1296,7 +1296,9 @@ void OnTacho(uint32_t channel) {
 
 }
 
-
+void Error_Handler(void) {
+	Generic_Error_Handler();
+}
 /* USER CODE END 4 */
 
 /* USER CODE BEGIN Header_StartDefaultTask */

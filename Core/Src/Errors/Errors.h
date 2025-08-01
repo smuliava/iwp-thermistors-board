@@ -5,6 +5,6 @@
 #ifndef ERRORS_H
 #define ERRORS_H
 
-void Error_Handler();
+[[noreturn]] void Generic_Error_Handler();
 
 #endif //ERRORS_H

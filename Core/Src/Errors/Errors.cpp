@@ -3,14 +3,12 @@
 //
 #include "Errors.h"
 
-#include "cmsis_gcc.h"
-
 /**
   * @brief  This function is executed in case of error occurrence.
   * @retval None
   */
-[[noreturn]] void Error_Handler() {
-  __disable_irq();
+[[noreturn]] void Generic_Error_Handler() {
+  // __disable_irq();
   while (true) {
   }
 }

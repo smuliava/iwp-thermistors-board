@@ -52,6 +52,7 @@ extern "C" {
 /* USER CODE BEGIN EFP */
 void OnSecondTick(void);
 void OnTacho(uint32_t channel);
+void Error_Handler(void);
 
 /* USER CODE END EFP */
 

@@ -13,9 +13,6 @@ set(CMAKE_OBJDUMP arm-none-eabi-objdump)
 set(SIZE arm-none-eabi-size)
 set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
 
-#set(CMAKE_C_FLAGS_DEBUG "-O0 -g")
-#set(CMAKE_CXX_FLAGS_DEBUG "-O0 -g")
-
 # project settings
 project(iwp-thermistors-board C CXX ASM)
 set(CMAKE_CXX_STANDARD 20)
@@ -53,71 +50,33 @@ else ()
     add_compile_options(-Og -g)
 endif ()
 
-include_directories(Core/Inc /Core/Src/Heating/Sensors Core/Src/Heating  Drivers/STM32G4xx_HAL_Driver/Inc Drivers/STM32G4xx_HAL_Driver/Inc/Legacy Drivers/CMSIS/Device/ST/STM32G4xx/Include Drivers/CMSIS/Include Middlewares/Third_Party/FreeRTOS/Source/include Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2 Middlewares/Third_Party/FreeRTOS/Source/portable/GCC/ARM_CM4F)
+include_directories(
+        Core/Src/Errors
+        Core/Src/Heating
+        Core/Src/Heating/Sensors
+        Core/Src/Pwm
+        Core/Inc
+        Drivers/STM32G4xx_HAL_Driver/Inc
+        Drivers/STM32G4xx_HAL_Driver/Inc/Legacy
+        Middlewares/Third_Party/FreeRTOS/Source/include
+        Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2
+        Middlewares/Third_Party/FreeRTOS/Source/portable/GCC/ARM_CM4F
+        Drivers/CMSIS/Device/ST/STM32G4xx/Include
+        Drivers/CMSIS/Include
+)
 
 add_definitions(-DDEBUG -DUSE_HAL_DRIVER -DSTM32G431xx)
 
 file(GLOB_RECURSE SOURCES "Core/*.*" "Middlewares/*.*" "Drivers/*.*")
 
-set(LINKER_SCRIPT ${CMAKE_SOURCE_DIR}/STM32G431CBUX_FLASH.ld
-        Core/Src/Pwm/Pwm.h
-        Core/Src/Pwm/Pwm.cpp
-        Core/Src/Errors/Errors.cpp
-        Core/Src/Errors/Errors.h)
+set(LINKER_SCRIPT ${CMAKE_SOURCE_DIR}/STM32G431CBUX_FLASH.ld)
 
 add_link_options(-Wl,-gc-sections,--print-memory-usage,-Map=${PROJECT_BINARY_DIR}/${PROJECT_NAME}.map)
 add_link_options(-mcpu=cortex-m4 -mthumb -mthumb-interwork)
 add_link_options(-T ${LINKER_SCRIPT})
 
-# --- Include Directories ---
-# These paths are relative to your project root (where CMakeLists.txt is)
-include_directories(
-        Core/Inc
-        Drivers/STM32F4xx_HAL_Driver/Inc # Adjust for your family (e.g., STM32L4xx_HAL_Driver)
-        Drivers/CMSIS/Device/ST/STM32F4xx/Include # Adjust for your family
-        Drivers/CMSIS/Include
-)
+add_executable(${PROJECT_NAME}.elf ${SOURCES} ${LINKER_SCRIPT})
 
-# --- Source Files ---
-# Core Sources
-set(CORE_SOURCES
-        Core/Src/main.c
-        Core/Src/gpio.c
-        Core/Src/stm32f4xx_it.c # Adjust for your family (e.g., stm32l4xx_it.c)
-        Core/Src/stm32f4xx_hal_msp.c # Adjust for your family
-        Core/Src/system_stm32f4xx.c # Adjust for your family
-)
-
-# HAL Driver Sources (adjust for your family and only include used drivers to save space)
-set(HAL_SOURCES
-        Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal.c
-        Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_rcc.c
-        Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_rcc_ex.c
-        Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_flash.c
-        Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_flash_ex.c
-        Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_flash_ramfunc.c
-        Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_gpio.c
-        Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_dma_ex.c
-        Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_dma.c
-        Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_pwr.c
-        Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_pwr_ex.c
-        Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_cortex.c
-        # Add other HAL drivers based on your CubeMX configuration (e.g., stm32f4xx_hal_tim.c, stm32f4xx_hal_uart.c)
-)
-
-# Startup File (adjust for your specific MCU and core)
-# For F407, it's startup_stm32f407xx.s, but check your Startup folder.
-# For other families, it might be different (e.g., startup_stm32l476xx.s)
-#set(STARTUP_FILE Startup/startup_stm32f407xx.s)
-
-
-add_executable(${PROJECT_NAME}.elf ${SOURCES} ${LINKER_SCRIPT}
-        Core/Src/Pwm/Pwm.h
-        Core/Src/Pwm/Pwm.cpp
-        Core/Src/Errors/Errors.cpp
-        Core/Src/Errors/Errors.h)
-
-# Apply configuration-specific compile options to the target
 target_compile_options(${PROJECT_NAME}.elf PRIVATE
         $<$<CONFIG:Debug>:-O0 -g>      # For Debug build type
         $<$<CONFIG:Release>:-O3>       # For Release build type
